@@ -81,7 +81,7 @@ This project is developed by multiple AI agents. Adherence to this protocol is m
 | Docker + docker-compose | Claude | **Done** | `docker/`, `docker-compose.yml` - working! |
 | Stage 5: Cognitive test | | Pending | |
 | Unit tests (pytest) | | Pending | Setup test framework in `tests/` |
-| Frontend: Stage 1 UI | | Pending | Нужно восстановить (было перезаписано) |
+| Frontend: Stage 1 UI | Claude | **Done** | Восстановлено: форма + результат |
 | Database Integration | | Pending | Add PostgreSQL to store results |
 | Stage 7-14 | | Pending | See `AI Sales Recruitment Funnel.xlsx` |
 
