@@ -1,7 +1,8 @@
 # AI-HR
 
 ## WHAT
-AI-powered HR automation platform. Stack TBD.
+AI-powered HR automation platform.
+Stack: Python + FastAPI, PostgreSQL, Claude API.
 
 ## WHY
 Automate routine HR tasks: candidate screening, interview scheduling, onboarding workflows.
@@ -15,11 +16,15 @@ Automate routine HR tasks: candidate screening, interview scheduling, onboarding
 
 ### Project Structure
 ```
-docs/           # Documentation and specs
-src/            # Source code
-tests/          # Test files
+docs/               # Documentation
+  PROJECT.md        # Current status & roadmap
+  HYPOTHESES.md     # Hypothesis tracking
+  decisions/        # ADRs (Architecture Decision Records)
+src/                # Source code
+tests/              # Test files
 ```
 
-### Additional Docs
-- Architecture decisions: docs/architecture.md
-- API specs: docs/api.md
+### Key Docs
+- Project status: docs/PROJECT.md
+- Hypotheses: docs/HYPOTHESES.md
+- ADRs: docs/decisions/
