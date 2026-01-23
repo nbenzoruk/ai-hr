@@ -55,6 +55,107 @@ if 'xp' not in st.session_state:
     st.session_state.xp = 0
 if 'start_time' not in st.session_state:
     st.session_state.start_time = None
+if 'screening_step' not in st.session_state:
+    st.session_state.screening_step = 1
+if 'screening_answers' not in st.session_state:
+    st.session_state.screening_answers = {}
+if 'unlocked_content' not in st.session_state:
+    st.session_state.unlocked_content = []
+
+# --- Unlockable Content System ---
+UNLOCKABLE_CONTENT = {
+    'team_insights': {
+        'id': 'team_insights',
+        'title': '🔓 Инсайды о команде',
+        'unlock_after': 'screening',
+        'content': """
+### 👥 Познакомьтесь с командой!
+
+**Типичный день менеджера по продажам:**
+- 09:00 — Утренний стендап (15 мин)
+- 09:30 — Блок холодных звонков
+- 12:00 — Обед (компания оплачивает!)
+- 13:00 — Встречи с клиентами
+- 17:00 — Подведение итогов в CRM
+- 18:00 — Домой (никаких переработок!)
+
+**Цифры команды:**
+- 📊 Средний стаж: 2.5 года
+- 💰 Средний бонус: 45% от оклада
+- 🎯 92% выполняют план
+"""
+    },
+    'salary_benchmarks': {
+        'id': 'salary_benchmarks',
+        'title': '💰 Зарплатный бенчмарк',
+        'unlock_after': 'motivation',
+        'content': """
+### 💰 Реальные зарплаты в команде
+
+**По грейдам:**
+| Грейд | Оклад | Бонус | Итого |
+|-------|-------|-------|-------|
+| Junior | 50-70K | 20-40K | 70-110K |
+| Middle | 80-120K | 40-80K | 120-200K |
+| Senior | 130-180K | 80-150K | 210-330K |
+
+**Топ-перформеры** зарабатывают **до 400K/мес**!
+
+🚀 *Эти данные за последний квартал*
+"""
+    },
+    'success_stories': {
+        'id': 'success_stories',
+        'title': '⭐ Истории успеха',
+        'unlock_after': 'interview',
+        'content': """
+### ⭐ Истории наших сотрудников
+
+**Алексей, 28 лет** (был Junior → стал Team Lead за 1.5 года)
+> "Пришёл без опыта в продажах. Через полгода уже был лучшим в команде.
+> Секрет? Отличный онбординг и менторство."
+
+**Мария, 32 года** (перешла из ритейла)
+> "Думала, B2B — это сложно. Оказалось, здесь ценят мой опыт общения с людьми.
+> Сейчас зарабатываю в 2 раза больше, чем в рознице."
+
+**Дмитрий, 25 лет** (первая работа после универа)
+> "Боялся холодных звонков. Теперь делаю 50+ в день играючи.
+> Главное — скрипты и практика."
+"""
+    }
+}
+
+def unlock_content(content_id):
+    """Unlock content for the candidate."""
+    if content_id not in st.session_state.unlocked_content:
+        st.session_state.unlocked_content.append(content_id)
+        return UNLOCKABLE_CONTENT.get(content_id)
+    return None
+
+def check_unlocks_for_stage(stage_name):
+    """Check and unlock content after completing a stage."""
+    unlocked = []
+    for content_id, content in UNLOCKABLE_CONTENT.items():
+        if content['unlock_after'] == stage_name and content_id not in st.session_state.unlocked_content:
+            unlocked.append(unlock_content(content_id))
+    return [u for u in unlocked if u]
+
+def render_unlock_notification(unlocked_content):
+    """Render notification about newly unlocked content."""
+    if not unlocked_content:
+        return
+
+    for content in unlocked_content:
+        st.success(f"""
+        🔓 **РАЗБЛОКИРОВАНО!**
+
+        Вы открыли доступ к секретному разделу:
+        **{content['title']}**
+        """)
+
+        with st.expander("👀 Посмотреть сейчас", expanded=False):
+            st.markdown(content['content'])
 
 # --- Gamification System ---
 ACHIEVEMENTS = {
@@ -145,6 +246,13 @@ def render_stage_celebration(stage_name, next_stage, achievement_id=None, fun_fa
                 st.metric("Качество ответов", "Хорошо")
 
         st.markdown("---")
+
+        # Show pending unlocks
+        pending_unlocks = st.session_state.candidate_data.get('pending_unlocks', [])
+        if pending_unlocks:
+            render_unlock_notification(pending_unlocks)
+            # Clear pending unlocks after showing
+            st.session_state.candidate_data['pending_unlocks'] = []
 
         # Continue button
         if st.button(f"🚀 Продолжить → {next_stage}", type="primary", use_container_width=True):
@@ -406,8 +514,26 @@ def render_screening():
     render_progress_header()
     st.title("📋 Этап 1: Анкета")
 
-    # Контекст для кандидата
-    st.info("🎯 **Цель:** Эти 3 вопроса помогут понять, подходит ли вакансия именно вам. Это сэкономит ваше время!")
+    # Mini progress for wizard steps
+    step = st.session_state.screening_step
+    total_steps = 3
+
+    st.markdown(f"""
+    <div style="background: linear-gradient(90deg, #4CAF50 {step/total_steps*100}%, #e0e0e0 {step/total_steps*100}%);
+                height: 8px; border-radius: 4px; margin-bottom: 20px;"></div>
+    """, unsafe_allow_html=True)
+
+    cols = st.columns(3)
+    for i, (col, label) in enumerate(zip(cols, ["📞 Звонки", "🏢 Формат", "💰 Зарплата"]), 1):
+        with col:
+            if i < step:
+                st.markdown(f"<div style='text-align:center;color:#4CAF50'>✅ {label}</div>", unsafe_allow_html=True)
+            elif i == step:
+                st.markdown(f"<div style='text-align:center;font-weight:bold'>👉 {label}</div>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<div style='text-align:center;color:#999'>{label}</div>", unsafe_allow_html=True)
+
+    st.divider()
 
     if st.session_state.get('show_hints'):
         st.info("""
@@ -417,64 +543,113 @@ def render_screening():
         - Зарплата: **≤ 60 000**
         """)
 
-    with st.form("screening_form"):
-        st.subheader("Основные вопросы")
+    # === STEP 1: Cold Calls ===
+    if step == 1:
+        st.subheader("📞 Шаг 1: Готовность к холодным звонкам")
 
-        willing_to_cold_call = st.checkbox(
-            "Готовы ли вы совершать холодные звонки?",
-            help="Это важная часть работы менеджера по продажам"
-        )
+        st.markdown("""
+        **Почему мы спрашиваем?**
 
-        work_format = st.selectbox(
-            "Какой формат работы вам подходит?",
-            ["office", "remote", "hybrid"],
-            format_func=lambda x: {"office": "🏢 Офис", "remote": "🏠 Удалённо", "hybrid": "🔄 Гибрид"}[x]
-        )
+        Холодные звонки — ключевая часть работы менеджера по продажам.
+        Мы хотим убедиться, что вы готовы к этому с первого дня.
 
-        salary_expectation = st.number_input(
-            "Ваши зарплатные ожидания (₽/мес)?",
-            min_value=0,
-            max_value=500000,
-            step=5000,
-            value=50000
-        )
+        🎯 *85% наших топ-перформеров начинали именно с холодных звонков*
+        """)
 
-        submitted = st.form_submit_button("Отправить анкету", type="primary", use_container_width=True)
-
-        if submitted:
-            # Front-end validation BEFORE API call
-            validation_errors = []
-
-            if not willing_to_cold_call:
-                validation_errors.append("❌ Для данной вакансии обязательна готовность к холодным звонкам")
-
-            if salary_expectation > 500000:
-                validation_errors.append(f"❌ Зарплатные ожидания ({salary_expectation:,} ₽) превышают бюджет вакансии")
-
-            if validation_errors:
-                for error in validation_errors:
-                    st.error(error)
-                st.warning("⚠️ К сожалению, ваш профиль не соответствует требованиям вакансии.")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✅ Да, готов(а)!", type="primary", use_container_width=True):
+                st.session_state.screening_answers['cold_calls'] = True
+                st.session_state.screening_step = 2
+                st.rerun()
+        with col2:
+            if st.button("❌ Нет, не готов(а)", use_container_width=True):
+                st.session_state.screening_answers['cold_calls'] = False
+                # Сразу показываем отказ
+                st.error("❌ К сожалению, для данной вакансии обязательна готовность к холодным звонкам.")
+                st.warning("Но не расстраивайтесь! Возможно, вам подойдут другие позиции.")
                 st.session_state.candidate_data['screening'] = {
                     'passed': False,
-                    'answers': [
-                        {"question_id": "cold_calls", "answer": willing_to_cold_call},
-                        {"question_id": "work_format", "answer": work_format},
-                        {"question_id": "salary_expectation", "answer": salary_expectation}
-                    ],
-                    'rejection_reasons': validation_errors
+                    'answers': [{"question_id": "cold_calls", "answer": False}],
+                    'rejection_reasons': ["Не готов к холодным звонкам"]
                 }
                 st.session_state.candidate_data['final_status'] = 'rejected'
                 st.session_state.candidate_data['rejection_stage'] = 'screening'
+                time.sleep(2)
                 st.session_state.stage = 'result'
                 st.rerun()
-            else:
-                # All front-end validation passed, now check with API
+
+    # === STEP 2: Work Format ===
+    elif step == 2:
+        st.subheader("🏢 Шаг 2: Формат работы")
+
+        st.markdown("""
+        **Какой формат вам ближе?**
+
+        Мы ценим комфорт наших сотрудников и предлагаем разные варианты.
+        """)
+
+        format_options = [
+            ("office", "🏢 Офис", "Работа в команде, быстрый рост, менторство"),
+            ("hybrid", "🔄 Гибрид", "2-3 дня в офисе, остальное — из дома"),
+            ("remote", "🏠 Удалённо", "Полная свобода локации"),
+        ]
+
+        for fmt_id, fmt_name, fmt_desc in format_options:
+            if st.button(f"{fmt_name}\n\n_{fmt_desc}_", key=f"fmt_{fmt_id}", use_container_width=True):
+                st.session_state.screening_answers['work_format'] = fmt_id
+                st.session_state.screening_step = 3
+                st.rerun()
+
+        st.divider()
+        if st.button("← Назад", key="back_to_1"):
+            st.session_state.screening_step = 1
+            st.rerun()
+
+    # === STEP 3: Salary ===
+    elif step == 3:
+        st.subheader("💰 Шаг 3: Зарплатные ожидания")
+
+        st.markdown("""
+        **Сколько вы хотите зарабатывать?**
+
+        Будьте честны — это поможет понять, подходит ли вакансия.
+
+        📊 *Средняя зарплата в команде: 80-150K ₽/мес (оклад + бонусы)*
+        """)
+
+        salary = st.slider(
+            "Ваши ожидания (₽/мес)",
+            min_value=30000,
+            max_value=300000,
+            value=st.session_state.screening_answers.get('salary_expectation', 80000),
+            step=5000,
+            format="%d ₽"
+        )
+
+        # Visual feedback
+        if salary <= 100000:
+            st.success("✅ Отлично! Это в пределах бюджета для Junior/Middle позиций")
+        elif salary <= 180000:
+            st.info("👍 Хорошо! Это соответствует Middle/Senior позициям")
+        else:
+            st.warning("⚠️ Высокие ожидания. Возможно, потребуется обсуждение с руководителем")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("← Назад", key="back_to_2", use_container_width=True):
+                st.session_state.screening_step = 2
+                st.rerun()
+        with col2:
+            if st.button("Завершить анкету ✓", type="primary", use_container_width=True):
+                st.session_state.screening_answers['salary_expectation'] = salary
+                # Submit all answers
                 answers = [
-                    {"question_id": "cold_calls", "answer": willing_to_cold_call},
-                    {"question_id": "work_format", "answer": work_format},
-                    {"question_id": "salary_expectation", "answer": salary_expectation}
+                    {"question_id": "cold_calls", "answer": st.session_state.screening_answers.get('cold_calls', False)},
+                    {"question_id": "work_format", "answer": st.session_state.screening_answers.get('work_format', 'office')},
+                    {"question_id": "salary_expectation", "answer": salary}
                 ]
+
                 with st.spinner("Проверяем ваши ответы..."):
                     response = api_request("post", "/v1/screen/stage2_screening", json={"answers": answers})
 
@@ -485,8 +660,15 @@ def render_screening():
                     }
                     if response['passed']:
                         award_achievement('screening_done')
+                        # Check for unlocks
+                        unlocked = check_unlocks_for_stage('screening')
+                        if unlocked:
+                            st.session_state.candidate_data['pending_unlocks'] = unlocked
                         st.session_state.candidate_data['show_celebration'] = 'screening'
                         st.session_state.stage = 'resume'
+                        # Reset wizard for next time
+                        st.session_state.screening_step = 1
+                        st.session_state.screening_answers = {}
                     else:
                         st.error("К сожалению, ваш профиль не соответствует требованиям вакансии.")
                         st.session_state.candidate_data['final_status'] = 'rejected'
@@ -671,6 +853,10 @@ def render_motivation():
                     # Кандидат не видит детальный анализ мотивации
                     st.session_state.candidate_data['motivation'] = response
                     award_achievement('motivation_done')
+                    # Check for unlocks
+                    unlocked = check_unlocks_for_stage('motivation')
+                    if unlocked:
+                        st.session_state.candidate_data['pending_unlocks'] = unlocked
                     st.session_state.candidate_data['show_celebration'] = 'motivation'
                     st.session_state.stage = 'cognitive'
                     st.rerun()
@@ -810,6 +996,10 @@ def render_interview():
         if 'interview' not in st.session_state.candidate_data:
             st.session_state.candidate_data['interview'] = st.session_state.assessment
             award_achievement('interview_done')
+            # Check for unlocks
+            unlocked = check_unlocks_for_stage('interview')
+            if unlocked:
+                st.session_state.candidate_data['pending_unlocks'] = unlocked
 
         st.balloons()
         st.success("🎉 **AI-интервью завершено!**")
