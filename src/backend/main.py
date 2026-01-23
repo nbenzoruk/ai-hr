@@ -3,7 +3,7 @@ import json
 from contextlib import asynccontextmanager
 from openai import AsyncOpenAI
 from fastapi import FastAPI, HTTPException, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Literal, Optional, Union, Dict
 from enum import Enum
 from datetime import datetime
@@ -412,9 +412,7 @@ class JobOut(BaseModel):
     tags: List[str]
     is_active: bool
     candidates_count: int = 0
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 @app.post("/v1/jobs", response_model=JobOut, tags=["Jobs"])
 async def create_job(request: JobCreate, db: AsyncSession = Depends(get_db)):
@@ -541,9 +539,7 @@ class CandidateOut(BaseModel):
     cognitive_passed: Optional[bool]
     interview_assessment: Optional[dict]
     created_at: str
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class CandidateDetailOut(CandidateOut):
     """Detailed candidate data for HR"""
