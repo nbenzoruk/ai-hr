@@ -80,7 +80,7 @@ This project is developed by multiple AI agents. Adherence to this protocol is m
 | Stage 4: Motivation survey | Gemini | **Done** | Backend + Frontend готовы |
 | Docker + docker-compose | Claude | **Done** | `docker/`, `docker-compose.yml` - working! |
 | Stage 5: Cognitive test | Gemini | **Done** | Backend + Frontend готовы |
-| Unit tests (pytest) | Claude | **Done** | 30 tests: Stage 2, 5, CRUD Jobs/Candidates, Stats + mocked AI |
+| Unit tests (pytest) | Claude | **Done** | 45 tests: Stage 2, 5, 7, 8, 12-14, CRUD Jobs/Candidates, Stats |
 | Frontend: Stage 1 UI | Claude | **Done** | Восстановлено: форма + результат |
 | Database Integration | Claude | **Done** | PostgreSQL + SQLAlchemy async, models.py, database.py |
 | Stage 7: Personality Profile | Claude | **Done** | 14 вопросов, 7 шкал, sales_fit_score |
