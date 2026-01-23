@@ -117,3 +117,73 @@ docker-compose up -d
 | 12. Interview Guide | `POST /v1/screen/stage12_interview_guide` | Done |
 | 13. Offers | `POST/GET/PATCH /v1/offers` | Done |
 | 14. Onboarding | `POST/GET/PATCH /v1/onboarding/{id}/*` | Done |
+
+---
+
+## Roadmap: HR Job Management
+
+### Цель
+HR должен иметь возможность:
+- Создавать вакансии и получать публичные ссылки для кандидатов
+- Включать/выключать этапы воронки
+- Настраивать пороги прохождения
+- Добавлять кастомные вопросы
+
+### Архитектура (Гибридный вариант)
+
+```
+Job (вакансия)
+├── public_slug: str           # "sales-manager-2024" → /apply/sales-manager-2024
+├── is_published: bool         # опубликована ли
+├── pipeline_config: JSON      # настройки воронки
+│   {
+│     "stages": [
+│       {"key": "screening", "enabled": true, "order": 1},
+│       {"key": "resume", "enabled": true, "order": 2},
+│       {"key": "motivation", "enabled": true, "order": 3},
+│       {"key": "cognitive", "enabled": false},
+│       {"key": "personality", "enabled": true, "order": 4},
+│       {"key": "sales", "enabled": true, "order": 5}
+│     ],
+│     "thresholds": {
+│       "resume_min_score": 65,
+│       "cognitive_min_score": 2,
+│       "personality_min_score": 50
+│     }
+│   }
+│
+JobCustomQuestion (отдельная таблица)
+├── job_id
+├── stage_key
+├── question_text
+├── question_type: "yes_no" | "scale" | "open"
+├── is_deal_breaker: bool
+└── order: int
+```
+
+### Новые API endpoints
+
+| Endpoint | Метод | Описание |
+|----------|-------|----------|
+| `/v1/jobs/{id}/settings` | GET | Получить настройки воронки |
+| `/v1/jobs/{id}/settings` | PATCH | Обновить настройки |
+| `/v1/jobs/{id}/publish` | POST | Опубликовать вакансию |
+| `/v1/jobs/{id}/unpublish` | DELETE | Снять с публикации |
+| `/v1/jobs/{id}/questions` | GET | Список кастомных вопросов |
+| `/v1/jobs/{id}/questions` | POST | Добавить вопрос |
+| `/v1/jobs/{id}/questions/{qid}` | PATCH | Изменить вопрос |
+| `/v1/jobs/{id}/questions/{qid}` | DELETE | Удалить вопрос |
+| `/apply/{slug}` | GET | Публичный лендинг вакансии |
+| `/apply/{slug}/start` | POST | Начать прохождение |
+
+### Приоритеты (Backlog)
+
+| # | Задача | Приоритет | Статус |
+|---|--------|-----------|--------|
+| 1 | Публичная ссылка (public_slug, /apply/{slug}) | HIGH | Pending |
+| 2 | pipeline_config в Job модели | HIGH | Pending |
+| 3 | API настроек воронки | HIGH | Pending |
+| 4 | JobCustomQuestion модель + API | MEDIUM | Pending |
+| 5 | Dashboard кандидатов (фильтры, сортировка) | MEDIUM | Pending |
+| 6 | Аналитика воронки (конверсии по этапам) | MEDIUM | Pending |
+| 7 | Email/Telegram уведомления | LOW | Pending |
