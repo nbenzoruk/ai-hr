@@ -49,31 +49,52 @@ streamlit run src/frontend/app.py
 
 ---
 
-## Multi-Agent Collaboration
+## Parallel Work Protocol
 
-This project is developed by multiple AI agents (Gemini, Claude, etc.) working in parallel.
+This project is developed by multiple AI agents. Adherence to this protocol is mandatory to prevent conflicts.
 
-### Important Git Behavior
+**Source of Truth:** This `GEMINI.md` file, specifically the "Task Board" below, is the single source of truth for task management.
 
-**If you see changes in a file but `git status` shows "nothing to commit":**
-- This means another agent already committed those changes
-- Run `git log --oneline -5` to see recent commits
-- Run `git pull` if you're behind remote
+### Workflow
 
-**Before making changes:**
+1.  **Sync:** Always run `git pull origin main` before starting any work.
+2.  **Claim Task:**
+    *   Choose a task from the "Task Board" with the status `Pending`.
+    *   Update this file: put your name in `Assigned To` and change the status to `In Progress`.
+    *   Commit and push this change immediately with the message `chore: [Your Name] started task "[Task Name]"`.
+3.  **Develop:** Implement the feature. Minimize touching files outside the scope of your task.
+4.  **Commit & Push Work:** When your feature is complete, commit your work using the format:
+    ```
+    feat: Short description of the feature
+    
+    Co-Authored-By: Agent Name <agent@email.com>
+    ```
+5.  **Update Task Board:** After pushing your feature, `pull` again. Then, update the task status to `Done` in this `GEMINI.md` file and push the change with the message `chore: [Your Name] completed task "[Task Name]"`.
+
+---
+
+## Task Board
+
+| Task | Assigned To | Status | Notes |
+|------|-------------|--------|-------|
+| Stage 4: Motivation survey | Gemini | In Progress | Add endpoint to `main.py` and UI to `app.py` |
+| Docker + docker-compose | Claude | **Done** | `docker/`, `docker-compose.yml` - working! |
+| Stage 5: Cognitive test | | Pending | |
+| Unit tests (pytest) | | Pending | Setup test framework in `tests/` |
+| Frontend: Stage 1 UI | | Pending | Add job generation form to `app.py` |
+| Database Integration | | Pending | Add PostgreSQL to store results |
+| Stage 7-14 | | Pending | See `AI Sales Recruitment Funnel.xlsx` |
+
+### Quick Start (Docker)
 ```bash
-git pull origin main  # Always sync first
-git status            # Check for uncommitted changes
+docker-compose up -d
+# Backend:  http://localhost:8000/docs
+# Frontend: http://localhost:8501
 ```
 
-**Commit convention:**
-```
-feat: Short description
+---
 
-Co-Authored-By: Agent Name <noreply@anthropic.com>
-```
-
-### Current API Endpoints (as of latest commit)
+### Current API Endpoints
 
 | Stage | Endpoint | Status |
 |-------|----------|--------|
@@ -81,10 +102,3 @@ Co-Authored-By: Agent Name <noreply@anthropic.com>
 | 2. Screening | `POST /v1/screen/stage2_screening` | Done |
 | 3. Resume Scoring | `POST /v1/screen/stage3_resume_scoring` | Done |
 | 6. Behavioral Chat | `POST /v1/screen/stage6_behavioral_chat` | Done |
-
-### Next Tasks (unclaimed)
-- Stage 4: Motivation survey
-- Stage 5: Cognitive test
-- Stage 7-14: See `AI Sales Recruitment Funnel.xlsx`
-- Docker + docker-compose
-- Unit tests (pytest)
