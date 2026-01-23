@@ -79,11 +79,16 @@ This project is developed by multiple AI agents. Adherence to this protocol is m
 |------|-------------|--------|-------|
 | Stage 4: Motivation survey | Gemini | **Done** | Backend + Frontend готовы |
 | Docker + docker-compose | Claude | **Done** | `docker/`, `docker-compose.yml` - working! |
-| Stage 5: Cognitive test | | Pending | |
-| Unit tests (pytest) | | Pending | Setup test framework in `tests/` |
+| Stage 5: Cognitive test | Gemini | **Done** | Backend + Frontend готовы |
+| Unit tests (pytest) | Claude | **Done** | 30 tests: Stage 2, 5, CRUD Jobs/Candidates, Stats + mocked AI |
 | Frontend: Stage 1 UI | Claude | **Done** | Восстановлено: форма + результат |
-| Database Integration | | Pending | Add PostgreSQL to store results |
-| Stage 7-14 | | Pending | See `AI Sales Recruitment Funnel.xlsx` |
+| Database Integration | Claude | **Done** | PostgreSQL + SQLAlchemy async, models.py, database.py |
+| Stage 7: Personality Profile | Claude | **Done** | 14 вопросов, 7 шкал, sales_fit_score |
+| Stage 8: Sales Block | Claude | **Done** | 8 ситуационных кейсов + AI-оценка |
+| Stage 12: Interview Guide | Claude | **Done** | AI генерирует гайд для руководителя |
+| Stage 13: Offer Management | Claude | **Done** | CRUD офферов со статусами |
+| Stage 14: Onboarding | Claude | **Done** | Чек-лист + метрики |
+| Stage 9-11 | | Skipped | Видео-интервью и тест-звонок - пока пропущены |
 
 ### Quick Start (Docker)
 ```bash
@@ -102,4 +107,13 @@ docker-compose up -d
 | 2. Screening | `POST /v1/screen/stage2_screening` | Done |
 | 3. Resume Scoring | `POST /v1/screen/stage3_resume_scoring` | Done |
 | 4. Motivation Survey | `POST /v1/screen/stage4_motivation_survey` | Done |
+| 5. Cognitive Test | `GET /v1/screen/stage5_cognitive_test/questions` | Done |
+| 5. Cognitive Test | `POST /v1/screen/stage5_cognitive_test` | Done |
 | 6. Behavioral Chat | `POST /v1/screen/stage6_behavioral_chat` | Done |
+| 7. Personality Profile | `GET /v1/screen/stage7_personality/questions` | Done |
+| 7. Personality Profile | `POST /v1/screen/stage7_personality` | Done |
+| 8. Sales Block | `GET /v1/screen/stage8_sales/scenarios` | Done |
+| 8. Sales Block | `POST /v1/screen/stage8_sales` | Done |
+| 12. Interview Guide | `POST /v1/screen/stage12_interview_guide` | Done |
+| 13. Offers | `POST/GET/PATCH /v1/offers` | Done |
+| 14. Onboarding | `POST/GET/PATCH /v1/onboarding/{id}/*` | Done |

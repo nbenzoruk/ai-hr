@@ -1,6 +1,22 @@
-version: '3.8'
-
 services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: aihr
+      POSTGRES_PASSWORD: aihr_secret
+      POSTGRES_DB: aihr_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aihr -d aihr_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: .
@@ -9,8 +25,13 @@ services:
       - "8000:8000"
     env_file:
       - src/backend/.env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://aihr:aihr_secret@db:5432/aihr_db
     volumes:
       - ./src/backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]
@@ -18,14 +39,36 @@ services:
       timeout: 10s
       retries: 3
 
-  frontend:
+  # Candidate Portal - порт 8501
+  frontend-candidate:
     build:
       context: .
       dockerfile: docker/frontend.Dockerfile
+      args:
+        APP_FILE: app_candidate.py
     ports:
       - "8501:8501"
+    environment:
+      - BACKEND_URL=http://backend:8000
+      - DEMO_MODE=true
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # HR Panel - порт 8502
+  frontend-hr:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        APP_FILE: app_hr.py
+    ports:
+      - "8502:8501"
     environment:
       - BACKEND_URL=http://backend:8000
     depends_on:
       - backend
     restart: unless-stopped
+
+volumes:
+  postgres_data:

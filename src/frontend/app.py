@@ -14,9 +14,27 @@ def api_request(method, endpoint, **kwargs):
         response = requests.request(method, url, **kwargs)
         response.raise_for_status()
         return response.json()
+    except requests.exceptions.ConnectionError:
+        st.error("❌ Не удалось подключиться к серверу. Убедитесь, что бэкенд запущен.")
+        st.caption(f"URL: {url}")
+        return None
+    except requests.exceptions.Timeout:
+        st.error("⏱️ Сервер не отвечает. Попробуйте ещё раз.")
+        return None
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 500:
+            st.error("⚠️ Ошибка на сервере. Возможно, проблема с AI-провайдером.")
+            try:
+                detail = e.response.json().get('detail', '')
+                if detail:
+                    st.caption(f"Детали: {detail}")
+            except:
+                pass
+        else:
+            st.error(f"❌ Ошибка API: {e.response.status_code}")
+        return None
     except requests.exceptions.RequestException as e:
-        st.error(f"API request failed: {e}")
-        st.error(f"Response body: {e.response.text if e.response else 'No response'}")
+        st.error(f"❌ Ошибка запроса: {e}")
         return None
 
 # --- App Initialization ---
@@ -30,6 +48,69 @@ if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
 if 'assessment' not in st.session_state:
     st.session_state.assessment = None
+
+# --- Stage Progress Configuration ---
+STAGES_ORDER = [
+    ('start', '🏠 Старт'),
+    ('stage_1_job_generation', '📝 1. Создание вакансии'),
+    ('stage_1_result', '✅ 1. Вакансия готова'),
+    ('stage_2_screening', '📋 2. Скрининг'),
+    ('stage_3_resume', '📄 3. Анализ резюме'),
+    ('stage_4_motivation', '💡 4. Мотивация'),
+    ('stage_5_cognitive_test', '🧠 5. Когнитивный тест'),
+    ('stage_6_chat', '💬 6. AI-интервью'),
+    ('end_success', '🎉 Успех!'),
+    ('end_fail', '❌ Не прошёл'),
+]
+
+def get_stage_index(stage_key):
+    """Get the index of current stage for progress calculation."""
+    for i, (key, _) in enumerate(STAGES_ORDER):
+        if key == stage_key:
+            return i
+    return 0
+
+def render_sidebar():
+    """Render sidebar with progress and controls."""
+    with st.sidebar:
+        st.title("🎯 AI-HR Demo")
+        st.divider()
+
+        # Progress indicator
+        current_stage = st.session_state.get('stage', 'start')
+        current_idx = get_stage_index(current_stage)
+        total_stages = len(STAGES_ORDER) - 2  # Exclude end states
+        progress = min(current_idx / total_stages, 1.0)
+
+        st.subheader("📊 Прогресс")
+        st.progress(progress)
+
+        # Stage list
+        st.markdown("**Этапы:**")
+        for i, (key, label) in enumerate(STAGES_ORDER):
+            if key in ('end_success', 'end_fail'):
+                continue
+            if i < current_idx:
+                st.markdown(f"~~{label}~~ ✓")
+            elif i == current_idx:
+                st.markdown(f"**→ {label}**")
+            else:
+                st.markdown(f"<span style='color: gray'>{label}</span>", unsafe_allow_html=True)
+
+        st.divider()
+
+        # Reset button
+        if st.button("🔄 Начать заново", use_container_width=True):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.rerun()
+
+        # Demo hints toggle
+        st.divider()
+        st.session_state.show_hints = st.checkbox("💡 Показать подсказки", value=st.session_state.get('show_hints', False))
+
+        st.divider()
+        st.caption("AI-HR MVP v0.1")
 
 # --- Page Rendering ---
 
@@ -138,6 +219,15 @@ def render_stage_1_result():
 def render_stage_2_screening():
     st.title("Этап 2: Начальный скрининг")
     st.write("Ответьте на несколько ключевых вопросов.")
+
+    if st.session_state.get('show_hints'):
+        st.info("""
+        💡 **Подсказка для демо:** Чтобы пройти этот этап:
+        - Холодные звонки: **ДА** (обязательно!)
+        - Формат работы: **office** (только офис)
+        - Зарплата: **≤ 60 000** руб (не больше)
+        """)
+
     with st.form("screening_form"):
         willing_to_cold_call = st.checkbox("Вы готовы совершать холодные звонки?")
         work_format = st.selectbox("Какой формат работы вам подходит?", ["office", "remote", "hybrid"])
@@ -163,6 +253,18 @@ def render_stage_2_screening():
 def render_stage_3_resume():
     st.title("Этап 3: AI-анализ резюме")
     st.write("Вставьте текст вакансии и резюме для анализа.")
+
+    if st.session_state.get('show_hints'):
+        st.info("""
+        💡 **Подсказка для демо:** Нужно набрать **≥65 баллов**.
+
+        **Пример вакансии:**
+        > Ищем менеджера по продажам B2B. Опыт работы от 2 лет, знание CRM, навыки переговоров.
+
+        **Пример резюме:**
+        > Иван Петров. Опыт в B2B продажах 5 лет. Работал с CRM Bitrix24. Выполнял план на 120%. Провёл 200+ успешных сделок.
+        """)
+
     with st.form("resume_form"):
         job_description = st.text_area("Текст вакансии", height=200, placeholder="Пример: Ищем менеджера по продажам в B2B SaaS...")
         resume_text = st.text_area("Текст резюме", height=400, placeholder="Пример: Иван Иванов, опыт работы в продажах 5 лет...")
@@ -192,6 +294,17 @@ def render_stage_3_resume():
 def render_stage_4_motivation():
     st.title("Этап 4: Опрос по мотивации")
     st.write("Ответьте на несколько коротких вопросов, чтобы мы лучше поняли ваши карьерные цели.")
+
+    if st.session_state.get('show_hints'):
+        st.info("""
+        💡 **Подсказка для демо:** Этот этап не отсеивает — просто классифицирует мотивацию.
+
+        **Примеры ответов:**
+        - Мотивация: *"Высокий доход и возможность влиять на результат"*
+        - Смена работы: *"Хочу больше ответственности и роста"*
+        - KPI: *"Отношусь положительно, люблю измеримые цели"*
+        """)
+
     with st.form("motivation_form"):
         answer_motivation = st.text_area("Что вас мотивирует в работе больше всего?", placeholder="Например: возможность влиять на продукт, высокий доход, карьерный рост...")
         answer_reason_for_leaving = st.text_area("Почему вы решили сменить работу?", placeholder="Например: ищу новые вызовы, не было возможностей для роста...")
@@ -211,13 +324,75 @@ def render_stage_4_motivation():
                 col1.metric("Основной мотиватор", response['primary_motivation'])
                 col2.metric("Вторичный мотиватор", response['secondary_motivation'])
                 st.info(f"**Анализ:** {response['analysis_summary']}")
-                st.success("Спасибо! Переходим к финальному этапу.")
-                st.session_state.stage = 'stage_6_chat'
+                st.success("Спасибо! Переходим к следующему этапу.")
+                st.session_state.stage = 'stage_5_cognitive_test'
+                st.rerun()
+
+def render_stage_5_cognitive_test():
+    st.title("Этап 5: Когнитивный тест")
+    st.write("Пройдите короткий тест на логику, математику и внимательность.")
+
+    if st.session_state.get('show_hints'):
+        st.info("""
+        💡 **Подсказка для демо:** Нужно ответить **минимум на 2 из 3** вопросов правильно.
+
+        **Ответы:**
+        - Логика (Зипы-Зупы): **Ложь**
+        - Математика (ручка): **5 рублей**
+        - Внимание (буква 'о'): **11**
+        """)
+
+    if 'questions' not in st.session_state:
+        with st.spinner("Загружаем вопросы..."):
+            questions = api_request("get", "/v1/screen/stage5_cognitive_test/questions")
+            if questions:
+                st.session_state.questions = questions
+                st.rerun()
+            else:
+                st.error("❌ Не удалось загрузить вопросы теста. Проверьте подключение к серверу.")
+                return
+
+    with st.form("cognitive_test_form"):
+        st.subheader("Вопросы теста")
+        user_answers = {}
+        for q in st.session_state.questions:
+            user_answers[q['id']] = st.radio(q['question'], options=q['options'], key=q['id'])
+        
+        submitted = st.form_submit_button("Завершить тест")
+        if submitted:
+            answers_payload = [{"question_id": q_id, "answer": ans} for q_id, ans in user_answers.items()]
+            with st.spinner("Проверяем ваши ответы..."):
+                response = api_request("post", "/v1/screen/stage5_cognitive_test", json={"answers": answers_payload})
+            
+            if response:
+                st.session_state.candidate_data['stage5_response'] = response
+                st.subheader("Результат теста")
+                st.metric("Ваш результат", f"{response['score']} / {response['total']}")
+                
+                if response['passed']:
+                    st.success("Вы успешно прошли когнитивный тест!")
+                    st.session_state.stage = 'stage_6_chat'
+                else:
+                    st.error("К сожалению, вы не прошли тест. Необходим лучший результат.")
+                    st.session_state.stage = 'end_fail'
                 st.rerun()
 
 def render_stage_6_chat():
     st.title("Этап 6: Поведенческое AI-интервью")
     st.write("Вам будет задано несколько вопросов. Отвечайте честно и развернуто.")
+
+    if st.session_state.get('show_hints'):
+        st.info("""
+        💡 **Подсказка для демо:** Нужно ответить на **5 вопросов**.
+
+        Отвечайте развёрнуто (2-3 предложения), демонстрируя:
+        - Проактивность и инициативу
+        - Честность и самокритику
+        - Структурность мышления
+        - Ориентацию на результат
+
+        Пример: *"В прошлом году я увеличил продажи на 30% благодаря новой стратегии холодных звонков. Я сам предложил эту идею и внедрил её за месяц."*
+        """)
     if not st.session_state.chat_history:
         with st.spinner("Начинаем чат..."):
             response = api_request("post", "/v1/screen/stage6_behavioral_chat", json={"conversation": []})
@@ -258,6 +433,7 @@ def render_end_page(success=True):
         st.json(st.session_state.candidate_data)
 
 # --- Main App Logic ---
+render_sidebar()
 page = st.session_state.get('stage', 'start')
 
 if page == 'start':
@@ -272,6 +448,8 @@ elif page == 'stage_3_resume':
     render_stage_3_resume()
 elif page == 'stage_4_motivation':
     render_stage_4_motivation()
+elif page == 'stage_5_cognitive_test':
+    render_stage_5_cognitive_test()
 elif page == 'stage_6_chat':
     render_stage_6_chat()
 elif page == 'end_success':

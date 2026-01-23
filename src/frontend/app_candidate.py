@@ -1,0 +1,1021 @@
+"""
+AI-HR: Интерфейс кандидата
+Портал для прохождения отбора на вакансию
+"""
+import streamlit as st
+import requests
+import os
+import time
+
+# --- Configuration ---
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+
+# --- Helper Functions ---
+def api_request(method, endpoint, **kwargs):
+    """A wrapper for making API requests."""
+    url = f"{BACKEND_URL}{endpoint}"
+    try:
+        response = requests.request(method, url, **kwargs)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.ConnectionError:
+        st.error("❌ Не удалось подключиться к серверу. Попробуйте позже.")
+        return None
+    except requests.exceptions.Timeout:
+        st.error("⏱️ Сервер не отвечает. Попробуйте ещё раз.")
+        return None
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 500:
+            st.error("⚠️ Произошла ошибка. Пожалуйста, попробуйте позже.")
+        else:
+            st.error("❌ Произошла ошибка при обработке запроса.")
+        return None
+    except requests.exceptions.RequestException:
+        st.error("❌ Ошибка соединения.")
+        return None
+
+# --- App Initialization ---
+st.set_page_config(
+    page_title="Отбор кандидатов | AI-HR",
+    page_icon="👤",
+    layout="wide"
+)
+
+if 'stage' not in st.session_state:
+    st.session_state.stage = 'welcome'
+if 'candidate_data' not in st.session_state:
+    st.session_state.candidate_data = {}
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
+if 'assessment' not in st.session_state:
+    st.session_state.assessment = None
+if 'achievements' not in st.session_state:
+    st.session_state.achievements = []
+if 'xp' not in st.session_state:
+    st.session_state.xp = 0
+if 'start_time' not in st.session_state:
+    st.session_state.start_time = None
+
+# --- Gamification System ---
+ACHIEVEMENTS = {
+    'quick_start': {'name': '⚡ Быстрый старт', 'desc': 'Начали отбор менее чем за минуту', 'xp': 50},
+    'screening_done': {'name': '📋 Анкета пройдена', 'desc': 'Успешно заполнили анкету', 'xp': 100},
+    'resume_pro': {'name': '📄 Профи резюме', 'desc': 'Резюме оценено выше 80%', 'xp': 150},
+    'resume_done': {'name': '📄 Резюме отправлено', 'desc': 'Прошли этап резюме', 'xp': 100},
+    'motivation_done': {'name': '💡 Мотивация раскрыта', 'desc': 'Рассказали о своих целях', 'xp': 100},
+    'cognitive_ace': {'name': '🧠 Гений логики', 'desc': 'Ответили на все вопросы правильно', 'xp': 200},
+    'cognitive_done': {'name': '🧠 Тест пройден', 'desc': 'Прошли когнитивный тест', 'xp': 100},
+    'interview_done': {'name': '💬 Интервью завершено', 'desc': 'Прошли AI-интервью', 'xp': 150},
+    'champion': {'name': '🏆 Чемпион', 'desc': 'Прошли весь отбор!', 'xp': 300},
+}
+
+def award_achievement(achievement_id):
+    """Award an achievement to the candidate."""
+    if achievement_id not in st.session_state.achievements:
+        st.session_state.achievements.append(achievement_id)
+        achievement = ACHIEVEMENTS.get(achievement_id)
+        if achievement:
+            st.session_state.xp += achievement['xp']
+            return achievement
+    return None
+
+def get_candidate_stats():
+    """Generate comparison stats for the candidate."""
+    import random
+    # В реальности это будет из БД
+    return {
+        'speed_percentile': random.randint(60, 95),
+        'quality_percentile': random.randint(50, 90),
+        'candidates_this_week': random.randint(15, 40),
+    }
+
+def render_stage_celebration(stage_name, next_stage, achievement_id=None, fun_fact=None):
+    """Render celebration screen between stages."""
+    # Award achievement if provided
+    new_achievement = None
+    if achievement_id:
+        new_achievement = award_achievement(achievement_id)
+
+    # Celebration container
+    with st.container():
+        st.success(f"✨ **Отлично справились!** Этап «{stage_name}» пройден!")
+
+        # Show new achievement
+        if new_achievement:
+            st.markdown(f"""
+            🏆 **Новое достижение!**
+
+            **{new_achievement['name']}** — {new_achievement['desc']}
+
+            *+{new_achievement['xp']} XP*
+            """)
+
+        # Progress indicator
+        current_idx = get_stage_index(st.session_state.stage)
+        total_stages = len(CANDIDATE_STAGES) - 2  # Exclude welcome and result
+        progress_pct = int((current_idx / total_stages) * 100)
+
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.progress(current_idx / total_stages)
+            st.caption(f"🎯 Прогресс: {progress_pct}%")
+        with col2:
+            st.metric("XP", st.session_state.xp, delta=f"+{new_achievement['xp'] if new_achievement else 0}")
+
+        # Fun fact / social proof
+        if fun_fact:
+            st.info(f"💡 **Интересный факт:** {fun_fact}")
+
+        # Comparison stats
+        stats = get_candidate_stats()
+        st.markdown("---")
+        stat_col1, stat_col2, stat_col3 = st.columns(3)
+        with stat_col1:
+            st.metric("Ваша скорость", f"Топ {100 - stats['speed_percentile']}%", delta="быстрее большинства")
+        with stat_col2:
+            st.metric("На этой неделе", f"{stats['candidates_this_week']} чел.", help="Кандидатов на эту вакансию")
+        with stat_col3:
+            if stats['quality_percentile'] >= 75:
+                st.metric("Качество ответов", "Отлично", delta="выше среднего")
+            else:
+                st.metric("Качество ответов", "Хорошо")
+
+        st.markdown("---")
+
+        # Continue button
+        if st.button(f"🚀 Продолжить → {next_stage}", type="primary", use_container_width=True):
+            return True
+
+    return False
+
+# --- Stage Progress Configuration ---
+CANDIDATE_STAGES = [
+    ('welcome', '👋 Приветствие'),
+    ('screening', '📋 Анкета'),
+    ('resume', '📄 Резюме'),
+    ('motivation', '💡 Мотивация'),
+    ('cognitive', '🧠 Тест'),
+    ('interview', '💬 Интервью'),
+    ('result', '📊 Результат'),
+]
+
+def get_stage_index(stage_key):
+    for i, (key, _) in enumerate(CANDIDATE_STAGES):
+        if key == stage_key:
+            return i
+    return 0
+
+# --- Global Progress Bar Component ---
+def render_progress_header():
+    """Renders a motivational progress bar at the top of each stage."""
+    current_stage = st.session_state.get('stage', 'welcome')
+
+    # Don't show on welcome and result pages
+    if current_stage in ['welcome', 'result']:
+        return
+
+    current_idx = get_stage_index(current_stage)
+    total_stages = len(CANDIDATE_STAGES) - 1  # Exclude 'result' from count
+    progress = current_idx / total_stages
+
+    # Estimate remaining time based on stage
+    time_estimates = {
+        'screening': 12,
+        'resume': 10,
+        'motivation': 7,
+        'cognitive': 4,
+        'interview': 2
+    }
+    remaining_minutes = time_estimates.get(current_stage, 5)
+
+    # Motivational messages
+    messages = {
+        'screening': "Отличное начало! Ещё немного — и мы узнаем друг друга лучше",
+        'resume': "Вы на верном пути! AI уже готов проанализировать ваш опыт",
+        'motivation': "Больше половины позади! Расскажите о своих целях",
+        'cognitive': "Почти финиш! Последний рывок перед интервью",
+        'interview': "Финальный этап! Покажите себя с лучшей стороны"
+    }
+    message = messages.get(current_stage, "Продолжайте в том же духе!")
+
+    # Render progress header
+    with st.container():
+        cols = st.columns([3, 1])
+        with cols[0]:
+            st.progress(progress)
+            st.caption(f"**Этап {current_idx} из {total_stages - 1}** | {message}")
+        with cols[1]:
+            st.markdown(f"⏱️ **~{remaining_minutes} мин**")
+        st.divider()
+
+def render_achievements_sidebar():
+    """Render gamification panel in sidebar."""
+    if not st.session_state.achievements:
+        return
+
+    with st.expander("🏆 Достижения", expanded=False):
+        # XP Bar
+        max_xp = sum(a['xp'] for a in ACHIEVEMENTS.values())
+        current_xp = st.session_state.xp
+        xp_progress = min(current_xp / max_xp, 1.0)
+
+        st.markdown(f"**{current_xp} XP** из {max_xp}")
+        st.progress(xp_progress)
+
+        # Achievements list
+        for ach_id in st.session_state.achievements:
+            ach = ACHIEVEMENTS.get(ach_id)
+            if ach:
+                st.markdown(f"✅ {ach['name']}")
+
+        # Locked achievements
+        locked = [a for a_id, a in ACHIEVEMENTS.items() if a_id not in st.session_state.achievements]
+        if locked:
+            st.caption(f"🔒 Ещё {len(locked)} достижений")
+
+def render_sidebar():
+    with st.sidebar:
+        st.title("👤 Кабинет кандидата")
+        st.divider()
+
+        current_stage = st.session_state.get('stage', 'welcome')
+        current_idx = get_stage_index(current_stage)
+        total_stages = len(CANDIDATE_STAGES) - 1
+        progress = min(current_idx / total_stages, 1.0)
+
+        st.subheader("📊 Прогресс отбора")
+        st.progress(progress)
+        st.caption(f"Этап {current_idx + 1} из {total_stages + 1}")
+
+        # Gamification XP display
+        if st.session_state.xp > 0:
+            st.markdown(f"⭐ **{st.session_state.xp} XP**")
+
+        st.divider()
+        st.markdown("**Этапы:**")
+        for i, (key, label) in enumerate(CANDIDATE_STAGES):
+            if i < current_idx:
+                st.markdown(f"✅ ~~{label}~~")
+            elif i == current_idx:
+                st.markdown(f"**→ {label}**")
+            else:
+                st.markdown(f"<span style='color: gray'>○ {label}</span>", unsafe_allow_html=True)
+
+        # Achievements panel
+        render_achievements_sidebar()
+
+        st.divider()
+
+        # Demo mode toggle (можно убрать в продакшене)
+        if os.getenv("DEMO_MODE", "true").lower() == "true":
+            st.session_state.show_hints = st.checkbox(
+                "💡 Демо-подсказки",
+                value=st.session_state.get('show_hints', False)
+            )
+
+        st.divider()
+        if st.button("🔄 Начать заново", use_container_width=True):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.rerun()
+
+        st.caption("AI-HR Candidate Portal v0.2")
+
+# --- Page Rendering ---
+
+def render_welcome():
+    st.title("👋 Добро пожаловать в команду продаж!")
+
+    # --- Блок о компании (Selling Points) ---
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        st.markdown("""
+        ### Менеджер по продажам B2B
+
+        Мы ищем амбициозных специалистов, готовых расти вместе с нами!
+        """)
+
+        # Ключевые преимущества
+        st.markdown("#### 💰 Что мы предлагаем:")
+        benefits_col1, benefits_col2 = st.columns(2)
+        with benefits_col1:
+            st.markdown("""
+            - 💵 **80 000 - 150 000 ₽** + бонусы
+            - 📈 Рост до руководителя за 1 год
+            - 🎓 Бесплатное обучение продажам
+            """)
+        with benefits_col2:
+            st.markdown("""
+            - 🏢 Гибкий график (офис/гибрид)
+            - 🏖️ 28 дней отпуска
+            - 🍕 Обеды за счёт компании
+            """)
+
+    with col2:
+        # Статистика компании
+        st.markdown("#### 🏢 О нас:")
+        st.metric("Средний доход", "120 000 ₽/мес", delta="+15% к рынку")
+        st.caption("87% сотрудников рекомендуют нас")
+
+    st.divider()
+
+    # --- Этапы как выгоды ---
+    st.markdown("### 🎯 Как проходит отбор?")
+    st.caption("Прозрачный процесс: вы всегда знаете, на каком этапе находитесь")
+
+    stages_col1, stages_col2 = st.columns(2)
+
+    with stages_col1:
+        st.markdown("""
+        **1. Быстрая анкета** (2 мин)
+        → Узнаете, подходит ли вам вакансия
+
+        **2. AI-анализ резюме** (3 мин)
+        → Получите обратную связь о ваших сильных сторонах
+
+        **3. Мотивация** (3 мин)
+        → Поможем подобрать команду под ваш стиль
+        """)
+
+    with stages_col2:
+        st.markdown("""
+        **4. Мини-тест на логику** (5 мин)
+        → Без стресса, всего 3 вопроса
+
+        **5. AI-интервью** (10 мин)
+        → Разговор, не допрос. В удобное вам время
+
+        **6. Результат**
+        → Мгновенный ответ, без ожидания
+        """)
+
+    st.divider()
+
+    # --- Прогресс и Social Proof ---
+    progress_col, social_col = st.columns([1, 1])
+
+    with progress_col:
+        st.markdown("#### ⏱️ Время прохождения")
+        st.progress(0.8)
+        st.caption("**80% кандидатов** завершают отбор за **15 минут**")
+
+    with social_col:
+        st.markdown("#### 💬 Отзыв кандидата")
+        st.info("""
+        *"Прошёл отбор за 12 минут и через неделю уже вышел на работу! Очень удобный формат."*
+        — Алексей С., менеджер по продажам
+        """)
+
+    st.divider()
+
+    # --- CTA ---
+    cta_col1, cta_col2 = st.columns([2, 1])
+
+    with cta_col1:
+        if st.button("🚀 Начать отбор", type="primary", use_container_width=True):
+            st.session_state.stage = 'screening'
+            st.session_state.start_time = time.time()
+            # Quick start achievement (if clicked within 60 seconds of page load)
+            award_achievement('quick_start')
+            st.rerun()
+
+    with cta_col2:
+        st.caption("💾 Прогресс сохраняется автоматически")
+
+    # Дополнительная информация
+    with st.expander("💡 Советы для успешного прохождения"):
+        st.markdown("""
+        - 📄 **Подготовьте резюме** — текст или файл
+        - ⏰ **Выделите 15-20 минут** без отвлечений
+        - 💬 **Отвечайте честно** — нет "правильных" ответов
+        - 🎯 **Будьте конкретны** — примеры из опыта ценятся
+        """)
+
+def render_screening():
+    render_progress_header()
+    st.title("📋 Этап 1: Анкета")
+
+    # Контекст для кандидата
+    st.info("🎯 **Цель:** Эти 3 вопроса помогут понять, подходит ли вакансия именно вам. Это сэкономит ваше время!")
+
+    if st.session_state.get('show_hints'):
+        st.info("""
+        💡 **Демо:** Чтобы пройти этап:
+        - Холодные звонки: **ДА**
+        - Формат: **office**
+        - Зарплата: **≤ 60 000**
+        """)
+
+    with st.form("screening_form"):
+        st.subheader("Основные вопросы")
+
+        willing_to_cold_call = st.checkbox(
+            "Готовы ли вы совершать холодные звонки?",
+            help="Это важная часть работы менеджера по продажам"
+        )
+
+        work_format = st.selectbox(
+            "Какой формат работы вам подходит?",
+            ["office", "remote", "hybrid"],
+            format_func=lambda x: {"office": "🏢 Офис", "remote": "🏠 Удалённо", "hybrid": "🔄 Гибрид"}[x]
+        )
+
+        salary_expectation = st.number_input(
+            "Ваши зарплатные ожидания (₽/мес)?",
+            min_value=0,
+            max_value=500000,
+            step=5000,
+            value=50000
+        )
+
+        submitted = st.form_submit_button("Отправить анкету", type="primary", use_container_width=True)
+
+        if submitted:
+            # Front-end validation BEFORE API call
+            validation_errors = []
+
+            if not willing_to_cold_call:
+                validation_errors.append("❌ Для данной вакансии обязательна готовность к холодным звонкам")
+
+            if salary_expectation > 500000:
+                validation_errors.append(f"❌ Зарплатные ожидания ({salary_expectation:,} ₽) превышают бюджет вакансии")
+
+            if validation_errors:
+                for error in validation_errors:
+                    st.error(error)
+                st.warning("⚠️ К сожалению, ваш профиль не соответствует требованиям вакансии.")
+                st.session_state.candidate_data['screening'] = {
+                    'passed': False,
+                    'answers': [
+                        {"question_id": "cold_calls", "answer": willing_to_cold_call},
+                        {"question_id": "work_format", "answer": work_format},
+                        {"question_id": "salary_expectation", "answer": salary_expectation}
+                    ],
+                    'rejection_reasons': validation_errors
+                }
+                st.session_state.candidate_data['final_status'] = 'rejected'
+                st.session_state.candidate_data['rejection_stage'] = 'screening'
+                st.session_state.stage = 'result'
+                st.rerun()
+            else:
+                # All front-end validation passed, now check with API
+                answers = [
+                    {"question_id": "cold_calls", "answer": willing_to_cold_call},
+                    {"question_id": "work_format", "answer": work_format},
+                    {"question_id": "salary_expectation", "answer": salary_expectation}
+                ]
+                with st.spinner("Проверяем ваши ответы..."):
+                    response = api_request("post", "/v1/screen/stage2_screening", json={"answers": answers})
+
+                if response:
+                    st.session_state.candidate_data['screening'] = {
+                        'passed': response['passed'],
+                        'answers': answers
+                    }
+                    if response['passed']:
+                        award_achievement('screening_done')
+                        st.session_state.candidate_data['show_celebration'] = 'screening'
+                        st.session_state.stage = 'resume'
+                    else:
+                        st.error("К сожалению, ваш профиль не соответствует требованиям вакансии.")
+                        st.session_state.candidate_data['final_status'] = 'rejected'
+                        st.session_state.candidate_data['rejection_stage'] = 'screening'
+                        st.session_state.stage = 'result'
+                    st.rerun()
+
+def render_resume():
+    # Check for celebration from previous stage
+    if st.session_state.candidate_data.get('show_celebration') == 'screening':
+        if render_stage_celebration(
+            stage_name="Анкета",
+            next_stage="Анализ резюме",
+            achievement_id=None,  # Already awarded
+            fun_fact="92% кандидатов, прошедших анкету, получают оффер!"
+        ):
+            del st.session_state.candidate_data['show_celebration']
+            st.rerun()
+        return
+
+    render_progress_header()
+    st.title("📄 Этап 2: Анализ резюме")
+
+    # Value proposition для AI-анализа
+    st.markdown("""
+    🤖 **Наш AI проанализирует:**
+    - ✓ Соответствие вакансии (0-100%)
+    - ✓ Ваши сильные стороны
+    - ✓ Рекомендации по улучшению
+
+    ⚡ *Анализ займёт всего 5 секунд!*
+    """)
+
+    if st.session_state.get('show_hints'):
+        st.info("""
+        💡 **Демо:** Нужно **≥65 баллов**.
+        Пример резюме: *"Иван Петров. Опыт в B2B продажах 5 лет. CRM Bitrix24. План 120%."*
+        """)
+
+    # Показываем требования вакансии (в реальности будут загружаться из БД)
+    with st.expander("📋 Требования вакансии"):
+        st.markdown("""
+        - Опыт работы в продажах от 2 лет
+        - Знание CRM-систем
+        - Навыки переговоров и презентаций
+        - Готовность к холодным звонкам
+        """)
+
+    with st.form("resume_form"):
+        resume_text = st.text_area(
+            "Вставьте текст вашего резюме",
+            height=300,
+            placeholder="Например:\nИван Иванов\nОпыт работы: 5 лет в B2B продажах\nДостижения: выполнение плана на 120%..."
+        )
+
+        submitted = st.form_submit_button("Отправить резюме", type="primary", use_container_width=True)
+
+        if submitted:
+            if len(resume_text.strip()) < 50:
+                st.error("Пожалуйста, введите более подробное резюме (минимум 50 символов)")
+            else:
+                # В реальности job_description будет загружаться из БД
+                job_description = "Менеджер по продажам B2B. Требования: опыт от 2 лет, знание CRM, навыки переговоров."
+
+                with st.spinner("AI анализирует ваше резюме..."):
+                    response = api_request("post", "/v1/screen/stage3_resume_scoring", json={
+                        "job_description": job_description,
+                        "resume_text": resume_text
+                    })
+
+                if response:
+                    passed = response['score'] >= 65
+                    score = response['score']
+
+                    # Сохраняем данные
+                    st.session_state.candidate_data['resume'] = {
+                        'passed': passed,
+                        'score': score,
+                        'summary': response.get('summary', '')
+                    }
+
+                    if passed:
+                        # Award achievements
+                        award_achievement('resume_done')
+                        if score >= 80:
+                            award_achievement('resume_pro')
+
+                        # Персонализированный позитивный фидбек
+                        st.success("✨ **Отличные результаты!**")
+
+                        # Показываем результат анализа
+                        result_col1, result_col2 = st.columns([1, 2])
+                        with result_col1:
+                            st.metric("Соответствие", f"{score}%", delta=f"+{score-65}% от минимума")
+                        with result_col2:
+                            st.markdown("""
+                            **💪 Ваши сильные стороны:**
+                            - Релевантный опыт работы
+                            - Соответствие ключевым требованиям
+                            """)
+
+                        # Совет (если есть что улучшить)
+                        if score < 85:
+                            st.info("💡 **Совет:** Добавьте конкретные цифры достижений для усиления резюме в будущем!")
+
+                        st.markdown("---")
+                        st.markdown("⏭️ **Готовы к следующему этапу?**")
+
+                        # Mark celebration and move to next stage
+                        st.session_state.candidate_data['show_celebration'] = 'resume'
+                        time.sleep(1.5)
+                        st.session_state.stage = 'motivation'
+                    else:
+                        st.error("К сожалению, ваш опыт недостаточно соответствует требованиям вакансии.")
+                        st.session_state.candidate_data['final_status'] = 'rejected'
+                        st.session_state.candidate_data['rejection_stage'] = 'resume'
+                        st.session_state.stage = 'result'
+                    st.rerun()
+
+def render_motivation():
+    # Check for celebration from previous stage
+    if st.session_state.candidate_data.get('show_celebration') == 'resume':
+        resume_score = st.session_state.candidate_data.get('resume', {}).get('score', 0)
+        if render_stage_celebration(
+            stage_name="Анализ резюме",
+            next_stage="Мотивация",
+            achievement_id=None,
+            fun_fact=f"Ваш результат {resume_score}% — это отличный показатель!"
+        ):
+            del st.session_state.candidate_data['show_celebration']
+            st.rerun()
+        return
+
+    render_progress_header()
+    st.title("💡 Этап 3: Мотивация")
+
+    # Объяснение зачем это нужно
+    st.info("""
+    🎯 **Зачем мы спрашиваем?**
+    Ваши ответы помогут нам подобрать:
+    - Подходящую команду
+    - Правильного наставника
+    - Проекты по интересам
+    """)
+
+    if st.session_state.get('show_hints'):
+        st.info("💡 **Демо:** Этот этап не отсеивает — просто классифицирует мотивацию.")
+
+    with st.form("motivation_form"):
+        answer_motivation = st.text_area(
+            "Что вас мотивирует в работе больше всего?",
+            placeholder="Например: возможность влиять на продукт, высокий доход, карьерный рост...",
+            height=100
+        )
+
+        answer_reason_for_leaving = st.text_area(
+            "Почему вы решили сменить работу?",
+            placeholder="Например: ищу новые вызовы, хочу развиваться в другой области...",
+            height=100
+        )
+
+        answer_kpi = st.text_area(
+            "Как вы относитесь к работе по KPI и планам продаж?",
+            placeholder="Например: положительно, это помогает фокусироваться на результате...",
+            height=100
+        )
+
+        submitted = st.form_submit_button("Отправить ответы", type="primary", use_container_width=True)
+
+        if submitted:
+            if not all([answer_motivation.strip(), answer_reason_for_leaving.strip(), answer_kpi.strip()]):
+                st.error("Пожалуйста, ответьте на все вопросы")
+            else:
+                with st.spinner("AI анализирует ваши ответы..."):
+                    response = api_request("post", "/v1/screen/stage4_motivation_survey", json={
+                        "answer_motivation": answer_motivation,
+                        "answer_reason_for_leaving": answer_reason_for_leaving,
+                        "answer_kpi": answer_kpi
+                    })
+
+                if response:
+                    # Кандидат не видит детальный анализ мотивации
+                    st.session_state.candidate_data['motivation'] = response
+                    award_achievement('motivation_done')
+                    st.session_state.candidate_data['show_celebration'] = 'motivation'
+                    st.session_state.stage = 'cognitive'
+                    st.rerun()
+
+def render_cognitive():
+    # Check for celebration from previous stage
+    if st.session_state.candidate_data.get('show_celebration') == 'motivation':
+        if render_stage_celebration(
+            stage_name="Мотивация",
+            next_stage="Мини-тест",
+            achievement_id=None,
+            fun_fact="Вы уже прошли больше половины отбора! До финиша совсем близко."
+        ):
+            del st.session_state.candidate_data['show_celebration']
+            st.rerun()
+        return
+
+    render_progress_header()
+    st.title("🧠 Этап 4: Мини-тест на логику")
+
+    # Снятие стресса перед тестом
+    st.success("""
+    😊 **Не переживайте!** Это не экзамен.
+
+    - 📊 Всего **3 быстрых вопроса**
+    - ⏱️ **Без ограничения времени** — думайте спокойно
+    - 💡 Большинство справляются за **2-3 минуты**
+    """)
+
+    if st.session_state.get('show_hints'):
+        st.info("""
+        💡 **Демо:** Минимум **2 из 3** правильных.
+        Ответы: Логика — **Ложь**, Математика — **5 рублей**, Внимание — **11**
+        """)
+
+    if 'questions' not in st.session_state:
+        with st.spinner("Загружаем тест..."):
+            questions = api_request("get", "/v1/screen/stage5_cognitive_test/questions")
+            if questions:
+                st.session_state.questions = questions
+                st.rerun()
+            else:
+                st.error("❌ Не удалось загрузить тест.")
+                return
+
+    with st.form("cognitive_form"):
+        st.markdown("**Ответьте на следующие вопросы:**")
+        user_answers = {}
+
+        for i, q in enumerate(st.session_state.questions, 1):
+            st.markdown(f"**Вопрос {i}:**")
+            user_answers[q['id']] = st.radio(
+                q['question'],
+                options=q['options'],
+                key=q['id'],
+                label_visibility="visible"
+            )
+            st.divider()
+
+        submitted = st.form_submit_button("Завершить тест", type="primary", use_container_width=True)
+
+        if submitted:
+            answers_payload = [{"question_id": q_id, "answer": ans} for q_id, ans in user_answers.items()]
+            with st.spinner("Проверяем ответы..."):
+                response = api_request("post", "/v1/screen/stage5_cognitive_test", json={"answers": answers_payload})
+
+            if response:
+                st.session_state.candidate_data['cognitive'] = response
+
+                # Кандидат видит свой результат
+                st.metric("Ваш результат", f"{response['score']} из {response['total']}")
+
+                if response['passed']:
+                    award_achievement('cognitive_done')
+                    if response['score'] == response['total']:
+                        award_achievement('cognitive_ace')
+                    st.session_state.candidate_data['show_celebration'] = 'cognitive'
+                    st.session_state.stage = 'interview'
+                else:
+                    st.error("К сожалению, результат теста недостаточен для продолжения.")
+                    st.session_state.candidate_data['final_status'] = 'rejected'
+                    st.session_state.candidate_data['rejection_stage'] = 'cognitive'
+                    st.session_state.stage = 'result'
+                st.rerun()
+
+def render_interview():
+    # Check for celebration from previous stage
+    if st.session_state.candidate_data.get('show_celebration') == 'cognitive':
+        cognitive = st.session_state.candidate_data.get('cognitive', {})
+        score = cognitive.get('score', 0)
+        total = cognitive.get('total', 3)
+        if render_stage_celebration(
+            stage_name="Когнитивный тест",
+            next_stage="AI-Интервью",
+            achievement_id=None,
+            fun_fact=f"Результат {score}/{total} — отличная работа! Финальный этап совсем рядом."
+        ):
+            del st.session_state.candidate_data['show_celebration']
+            st.rerun()
+        return
+
+    render_progress_header()
+    st.title("💬 Этап 5: AI-Интервью")
+
+    # Снятие стресса перед интервью
+    if not st.session_state.chat_history:
+        st.success("""
+        🎉 **Финальный этап!** Расслабьтесь, это разговор, а не допрос.
+
+        **Что вас ждёт:**
+        - 4-5 простых вопросов о вашем опыте
+        - Отвечайте в свободной форме
+        - Нет правильных или неправильных ответов
+
+        💡 *Совет: Будьте собой и говорите искренне*
+        """)
+
+    if st.session_state.get('show_hints'):
+        st.info("💡 **Демо:** Нужно ответить на **5 вопросов**. Пишите развёрнуто (2-3 предложения).")
+
+    if not st.session_state.chat_history:
+        with st.spinner("Начинаем интервью..."):
+            response = api_request("post", "/v1/screen/stage6_behavioral_chat", json={"conversation": []})
+            if response:
+                st.session_state.chat_history = response['conversation']
+                st.rerun()
+
+    # Показываем историю чата
+    for message in st.session_state.chat_history:
+        role = "assistant" if message['role'] == "assistant" else "user"
+        with st.chat_message(role):
+            st.markdown(message['content'])
+
+    # Проверяем, завершено ли интервью
+    if st.session_state.assessment:
+        # Сохраняем данные СРАЗУ, до любых кнопок
+        if 'interview' not in st.session_state.candidate_data:
+            st.session_state.candidate_data['interview'] = st.session_state.assessment
+            award_achievement('interview_done')
+            award_achievement('champion')
+        if st.session_state.candidate_data.get('final_status') != 'completed':
+            st.session_state.candidate_data['final_status'] = 'completed'
+
+        st.balloons()
+        st.success("🎉 **Интервью завершено! Поздравляем!**")
+
+        # Автоматический переход к результатам
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("📊 Посмотреть результаты", type="primary", use_container_width=True):
+                st.session_state.stage = 'result'
+                st.rerun()
+        with col2:
+            st.info("💡 Нажмите кнопку, чтобы увидеть итоги отбора")
+        return
+
+    # Поле для ввода ответа
+    if prompt := st.chat_input("Введите ваш ответ..."):
+        st.session_state.chat_history.append({"role": "user", "content": prompt})
+        with st.spinner("AI обрабатывает ваш ответ..."):
+            response = api_request("post", "/v1/screen/stage6_behavioral_chat", json={
+                "conversation": st.session_state.chat_history
+            })
+            if response:
+                st.session_state.chat_history = response['conversation']
+                if response.get('assessment'):
+                    st.session_state.assessment = response['assessment']
+                st.rerun()
+
+def render_result():
+    st.title("📊 Результаты отбора")
+
+    status = st.session_state.candidate_data.get('final_status', 'unknown')
+
+    if status == 'completed':
+        # === УСПЕХ ===
+        st.balloons()
+        st.success("🎉 **ПОЗДРАВЛЯЕМ!** Вы успешно прошли все этапы отбора!")
+
+        # Результаты
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Этапов пройдено", "5 из 5", delta="100%")
+        with col2:
+            cognitive = st.session_state.candidate_data.get('cognitive', {})
+            if cognitive:
+                st.metric("Тест на логику", f"{cognitive.get('score', 0)}/{cognitive.get('total', 3)}")
+        with col3:
+            resume = st.session_state.candidate_data.get('resume', {})
+            if resume:
+                st.metric("Резюме", f"{resume.get('score', 85)}%")
+
+        st.markdown("---")
+
+        # Что дальше
+        st.markdown("### 📞 Что дальше?")
+
+        next_col1, next_col2 = st.columns(2)
+        with next_col1:
+            st.markdown("""
+            **1️⃣ В течение 24 часов** с вами свяжется HR-менеджер
+
+            **2️⃣ Вы получите:**
+            - Детали вакансии и условия
+            - Приглашение на встречу с командой
+            - Ответы на все вопросы
+            """)
+        with next_col2:
+            st.info("""
+            **💌 Подготовьтесь:**
+            - ✓ Сформулируйте вопросы о вакансии
+            - ✓ Подумайте о зарплатных ожиданиях
+            - ✓ Подготовьте рекомендации (если есть)
+            """)
+
+        st.success("🏆 **Вы в числе лучших кандидатов!** Ждите звонка.")
+
+        # Show all achievements
+        if st.session_state.achievements:
+            st.markdown("---")
+            st.markdown("### 🏆 Ваши достижения")
+            ach_cols = st.columns(min(len(st.session_state.achievements), 4))
+            for i, ach_id in enumerate(st.session_state.achievements):
+                ach = ACHIEVEMENTS.get(ach_id)
+                if ach:
+                    with ach_cols[i % 4]:
+                        st.markdown(f"""
+                        **{ach['name']}**
+
+                        {ach['desc']}
+
+                        *+{ach['xp']} XP*
+                        """)
+            st.metric("Всего XP", st.session_state.xp)
+
+    elif status == 'rejected':
+        # === ОТКАЗ ===
+        rejection_stage = st.session_state.candidate_data.get('rejection_stage', 'unknown')
+
+        # Мягкое сообщение
+        st.warning("🤝 **Спасибо за участие в отборе!**")
+
+        stage_messages = {
+            'screening': "К сожалению, по результатам анкеты ваш профиль не соответствует текущим требованиям вакансии.",
+            'resume': "К сожалению, по результатам анализа резюме мы не можем продолжить процесс на эту позицию.",
+            'cognitive': "К сожалению, по результатам когнитивного теста мы не можем продолжить процесс."
+        }
+        st.markdown(stage_messages.get(rejection_stage, "К сожалению, мы не можем продолжить процесс."))
+
+        st.markdown("---")
+
+        # Детальный анализ — что получилось хорошо
+        st.markdown("### 📈 Ваш детальный анализ")
+
+        analysis_col1, analysis_col2 = st.columns(2)
+
+        with analysis_col1:
+            st.markdown("**✅ Что получилось отлично:**")
+            # Динамически показываем пройденные этапы
+            screening = st.session_state.candidate_data.get('screening', {})
+            resume = st.session_state.candidate_data.get('resume', {})
+            cognitive = st.session_state.candidate_data.get('cognitive', {})
+
+            if rejection_stage != 'screening':
+                if screening.get('passed'):
+                    st.markdown("- ✓ Анкета: соответствие критериям")
+            if rejection_stage not in ['screening', 'resume']:
+                if resume.get('passed'):
+                    st.markdown(f"- ✓ Резюме: {resume.get('score', 'N/A')}% соответствия")
+
+        with analysis_col2:
+            st.markdown("**⚠️ Где можно улучшиться:**")
+            if rejection_stage == 'screening':
+                st.markdown("""
+                - Готовность к холодным звонкам
+                - Соответствие зарплатных ожиданий
+                """)
+            elif rejection_stage == 'resume':
+                st.markdown("""
+                - Опыт в целевой отрасли
+                - Конкретные достижения с цифрами
+                """)
+            elif rejection_stage == 'cognitive':
+                score = cognitive.get('score', 0)
+                total = cognitive.get('total', 3)
+                st.markdown(f"""
+                - Когнитивный тест: {score}/{total}
+                - Логические задачи
+                """)
+
+        st.markdown("---")
+
+        # Ресурсы и мотивация
+        st.markdown("### 🌟 Не расстраивайтесь!")
+        st.markdown("Каждый отбор — это опыт. Вот что мы рекомендуем:")
+
+        resources_col1, resources_col2 = st.columns(2)
+
+        with resources_col1:
+            st.markdown("""
+            **📚 Бесплатные ресурсы:**
+            - 🧠 Тренажёр логических задач
+            - 📝 Шаблоны продающего резюме
+            - 🎯 Гайд по прохождению интервью
+            """)
+
+        with resources_col2:
+            st.markdown("""
+            **🔄 Попробуйте снова:**
+            Вы сможете пройти отбор заново через 30 дней.
+
+            *Используйте это время для подготовки!*
+            """)
+
+        st.markdown("---")
+
+        # Альтернативные вакансии
+        st.markdown("### 💼 Другие возможности")
+        st.info("""
+        У нас есть похожие вакансии, которые могут вам подойти:
+
+        **1. Junior Sales Manager** — 50 000-70 000 ₽ (без требований к тесту)
+
+        **2. Sales Development Representative** — 60 000-80 000 ₽ (удалёнка)
+
+        *Свяжитесь с нами: hr@company.ru*
+        """)
+
+        st.markdown("**Спасибо за ваше время! Мы верим в ваш потенциал 💪**")
+
+    else:
+        st.warning("Статус отбора неизвестен.")
+
+    st.divider()
+    if st.button("🔄 Начать новый отбор", use_container_width=True):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
+
+# --- Main App Logic ---
+render_sidebar()
+
+page = st.session_state.get('stage', 'welcome')
+
+if page == 'welcome':
+    render_welcome()
+elif page == 'screening':
+    render_screening()
+elif page == 'resume':
+    render_resume()
+elif page == 'motivation':
+    render_motivation()
+elif page == 'cognitive':
+    render_cognitive()
+elif page == 'interview':
+    render_interview()
+elif page == 'result':
+    render_result()
