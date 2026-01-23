@@ -64,7 +64,7 @@ def render_stage_2_screening():
                 else:
                     st.error(f"К сожалению, вы не прошли начальный скрининг. Детали: {response['details']}")
                     st.session_state.stage = 'end_fail'
-                st.button("Продолжить") # Button to force rerun
+                st.rerun()
 
 def render_stage_3_resume():
     st.title("Этап 3: AI-анализ резюме")
@@ -94,7 +94,7 @@ def render_stage_3_resume():
                 else:
                     st.error("Резюме не соответствует минимальным требованиям.")
                     st.session_state.stage = 'end_fail'
-                st.button("Продолжить")
+                st.rerun()
 
 def render_stage_6_chat():
     st.title("Этап 6: Поведенческое AI-интервью")
