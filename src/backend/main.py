@@ -19,7 +19,7 @@ import models
 load_dotenv()
 AI_API_KEY = os.getenv("AI_API_KEY")
 AI_API_BASE_URL = os.getenv("AI_API_BASE_URL", "https://openrouter.ai/api/v1")
-AI_AI_MODEL_NAME = os.getenv("AI_AI_MODEL_NAME", "google/gemini-pro")
+AI_MODEL_NAME = os.getenv("AI_MODEL_NAME", "google/gemini-pro")
 
 if not AI_API_KEY:
     raise ValueError("AI_API_KEY environment variable not set.")
@@ -117,7 +117,7 @@ async def stage1_generate_job_posting(request: JobBriefRequest):
     )
     try:
         response = await client.chat.completions.create(
-            model=AI_AI_MODEL_NAME,
+            model=AI_MODEL_NAME,
             messages=[
                 {"role": "system", "content": "Ты HR-эксперт. Отвечай только валидным JSON."},
                 {"role": "user", "content": prompt}
@@ -195,7 +195,7 @@ async def stage3_resume_scoring(request: ResumeScoringRequest):
     )
     try:
         response = await client.chat.completions.create(
-            model=AI_AI_MODEL_NAME,
+            model=AI_MODEL_NAME,
             messages=[{"role": "system", "content": prompt}],
             response_format={"type": "json_object"},
             temperature=0.3,
@@ -255,7 +255,7 @@ async def stage4_motivation_survey(request: MotivationSurveyRequest):
     )
     try:
         response = await client.chat.completions.create(
-            model=AI_AI_MODEL_NAME,
+            model=AI_MODEL_NAME,
             messages=[
                 {"role": "system", "content": "You are an HR psychologist. Respond only with valid JSON."},
                 {"role": "user", "content": prompt}
@@ -380,7 +380,7 @@ async def stage6_behavioral_chat(request: BehavioralChatRequest):
         prompt = FINAL_ASSESSMENT_PROMPT.format(chat_history=chat_history_str)
         try:
             response = await client.chat.completions.create(
-                model=AI_AI_MODEL_NAME,
+                model=AI_MODEL_NAME,
                 messages=[{"role": "system", "content": prompt}],
                 response_format={"type": "json_object"},
                 temperature=0.5,
@@ -1141,7 +1141,7 @@ async def stage8_sales_block(request: SalesBlockRequest):
     prompt = SALES_EVALUATION_PROMPT.format(scenarios_and_answers=scenarios_text)
 
     response = await client.chat.completions.create(
-        model=AI_AI_MODEL_NAME,
+        model=AI_MODEL_NAME,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
         response_format={"type": "json_object"}
@@ -1237,7 +1237,7 @@ async def stage12_interview_guide(request: InterviewGuideRequest, db: AsyncSessi
     )
 
     response = await client.chat.completions.create(
-        model=AI_AI_MODEL_NAME,
+        model=AI_MODEL_NAME,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.5,
         response_format={"type": "json_object"}

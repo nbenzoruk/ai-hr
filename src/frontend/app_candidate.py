@@ -66,6 +66,10 @@ ACHIEVEMENTS = {
     'cognitive_ace': {'name': '🧠 Гений логики', 'desc': 'Ответили на все вопросы правильно', 'xp': 200},
     'cognitive_done': {'name': '🧠 Тест пройден', 'desc': 'Прошли когнитивный тест', 'xp': 100},
     'interview_done': {'name': '💬 Интервью завершено', 'desc': 'Прошли AI-интервью', 'xp': 150},
+    'personality_done': {'name': '🎭 Профиль раскрыт', 'desc': 'Прошли личностный тест', 'xp': 100},
+    'personality_pro': {'name': '🌟 Идеальный продажник', 'desc': 'Sales Fit Score выше 75%', 'xp': 150},
+    'sales_done': {'name': '💼 Сейлз-эксперт', 'desc': 'Прошли все сейлз-кейсы', 'xp': 150},
+    'sales_ace': {'name': '🔥 Мастер продаж', 'desc': 'Сейлз-оценка выше 80%', 'xp': 200},
     'champion': {'name': '🏆 Чемпион', 'desc': 'Прошли весь отбор!', 'xp': 300},
 }
 
@@ -156,6 +160,8 @@ CANDIDATE_STAGES = [
     ('motivation', '💡 Мотивация'),
     ('cognitive', '🧠 Тест'),
     ('interview', '💬 Интервью'),
+    ('personality', '🎭 Личность'),
+    ('sales', '💼 Сейлз-кейсы'),
     ('result', '📊 Результат'),
 ]
 
@@ -180,11 +186,13 @@ def render_progress_header():
 
     # Estimate remaining time based on stage
     time_estimates = {
-        'screening': 12,
-        'resume': 10,
-        'motivation': 7,
-        'cognitive': 4,
-        'interview': 2
+        'screening': 18,
+        'resume': 15,
+        'motivation': 12,
+        'cognitive': 10,
+        'interview': 8,
+        'personality': 5,
+        'sales': 2
     }
     remaining_minutes = time_estimates.get(current_stage, 5)
 
@@ -193,8 +201,10 @@ def render_progress_header():
         'screening': "Отличное начало! Ещё немного — и мы узнаем друг друга лучше",
         'resume': "Вы на верном пути! AI уже готов проанализировать ваш опыт",
         'motivation': "Больше половины позади! Расскажите о своих целях",
-        'cognitive': "Почти финиш! Последний рывок перед интервью",
-        'interview': "Финальный этап! Покажите себя с лучшей стороны"
+        'cognitive': "Отлично идёте! Тест на логику — это легко",
+        'interview': "Покажите себя в AI-интервью!",
+        'personality': "Почти финиш! Узнаем ваш профиль продажника",
+        'sales': "Последний рывок! Покажите свои сейлз-скиллы"
     }
     message = messages.get(current_stage, "Продолжайте в том же духе!")
 
@@ -279,7 +289,7 @@ def render_sidebar():
                 del st.session_state[key]
             st.rerun()
 
-        st.caption("AI-HR Candidate Portal v0.2")
+        st.caption("AI-HR Candidate Portal v0.3")
 
 # --- Page Rendering ---
 
@@ -800,21 +810,15 @@ def render_interview():
         if 'interview' not in st.session_state.candidate_data:
             st.session_state.candidate_data['interview'] = st.session_state.assessment
             award_achievement('interview_done')
-            award_achievement('champion')
-        if st.session_state.candidate_data.get('final_status') != 'completed':
-            st.session_state.candidate_data['final_status'] = 'completed'
 
         st.balloons()
-        st.success("🎉 **Интервью завершено! Поздравляем!**")
+        st.success("🎉 **AI-интервью завершено!**")
 
-        # Автоматический переход к результатам
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("📊 Посмотреть результаты", type="primary", use_container_width=True):
-                st.session_state.stage = 'result'
-                st.rerun()
-        with col2:
-            st.info("💡 Нажмите кнопку, чтобы увидеть итоги отбора")
+        # Переход к личностному профилю
+        st.session_state.candidate_data['show_celebration'] = 'interview'
+        st.session_state.stage = 'personality'
+        time.sleep(1)
+        st.rerun()
         return
 
     # Поле для ввода ответа
@@ -829,6 +833,221 @@ def render_interview():
                 if response.get('assessment'):
                     st.session_state.assessment = response['assessment']
                 st.rerun()
+
+def render_personality():
+    # Check for celebration from previous stage
+    if st.session_state.candidate_data.get('show_celebration') == 'interview':
+        if render_stage_celebration(
+            stage_name="AI-Интервью",
+            next_stage="Личностный профиль",
+            achievement_id=None,
+            fun_fact="Вы прошли самый сложный этап! Осталось совсем немного."
+        ):
+            del st.session_state.candidate_data['show_celebration']
+            st.rerun()
+        return
+
+    render_progress_header()
+    st.title("🎭 Этап 6: Личностный профиль")
+
+    st.info("""
+    🎯 **Зачем этот тест?**
+    Мы хотим понять ваш стиль работы, чтобы:
+    - Подобрать идеальную команду
+    - Определить подходящие проекты
+    - Создать комфортные условия для вашего успеха
+
+    ⚡ *Нет правильных или неправильных ответов — отвечайте честно!*
+    """)
+
+    if st.session_state.get('show_hints'):
+        st.info("💡 **Демо:** Выбирайте ответы с высокими баллами (5) для лучшего результата.")
+
+    # Загружаем вопросы
+    if 'personality_questions' not in st.session_state:
+        with st.spinner("Загружаем тест..."):
+            questions = api_request("get", "/v1/screen/stage7_personality/questions")
+            if questions:
+                st.session_state.personality_questions = questions
+                st.rerun()
+            else:
+                st.error("❌ Не удалось загрузить тест.")
+                return
+
+    questions = st.session_state.personality_questions
+
+    with st.form("personality_form"):
+        st.markdown("**Выберите вариант, который лучше всего описывает вас:**")
+
+        answers = []
+        for i, q in enumerate(questions, 1):
+            st.markdown(f"**{i}. {q['text']}**")
+
+            # Создаём опции как радио-кнопки
+            options = q['options']
+            option_texts = [opt['text'] for opt in options]
+
+            selected = st.radio(
+                f"Вопрос {i}",
+                options=option_texts,
+                key=f"pers_{q['id']}",
+                label_visibility="collapsed"
+            )
+
+            # Находим выбранное значение
+            selected_value = next((opt['value'] for opt in options if opt['text'] == selected), 3)
+            answers.append({"question_id": q['id'], "value": selected_value})
+
+            if i < len(questions):
+                st.divider()
+
+        submitted = st.form_submit_button("Завершить тест", type="primary", use_container_width=True)
+
+        if submitted:
+            with st.spinner("AI анализирует ваш профиль..."):
+                response = api_request("post", "/v1/screen/stage7_personality", json={"answers": answers})
+
+            if response:
+                st.session_state.candidate_data['personality'] = response
+
+                # Показываем результат
+                sales_fit = response.get('sales_fit_score', 50)
+                st.metric("Sales Fit Score", f"{sales_fit}/100")
+
+                # Award achievements
+                award_achievement('personality_done')
+                if sales_fit >= 75:
+                    award_achievement('personality_pro')
+
+                # Проверяем красные флаги
+                red_flags = response.get('red_flags', [])
+                if len(red_flags) >= 2 and sales_fit < 40:
+                    st.error("К сожалению, по результатам теста мы не можем продолжить процесс.")
+                    st.session_state.candidate_data['final_status'] = 'rejected'
+                    st.session_state.candidate_data['rejection_stage'] = 'personality'
+                    st.session_state.stage = 'result'
+                else:
+                    st.success(f"✨ **Отличный профиль!** Sales Fit: {sales_fit}%")
+                    st.session_state.candidate_data['show_celebration'] = 'personality'
+                    st.session_state.stage = 'sales'
+
+                time.sleep(1)
+                st.rerun()
+
+
+def render_sales():
+    # Check for celebration from previous stage
+    if st.session_state.candidate_data.get('show_celebration') == 'personality':
+        personality = st.session_state.candidate_data.get('personality', {})
+        sales_fit = personality.get('sales_fit_score', 0)
+        if render_stage_celebration(
+            stage_name="Личностный профиль",
+            next_stage="Сейлз-кейсы",
+            achievement_id=None,
+            fun_fact=f"Ваш Sales Fit Score {sales_fit}% — это отличный показатель для продажника!"
+        ):
+            del st.session_state.candidate_data['show_celebration']
+            st.rerun()
+        return
+
+    render_progress_header()
+    st.title("💼 Этап 7: Сейлз-кейсы")
+
+    st.success("""
+    🎯 **Финальный рывок!** Покажите свои навыки продаж.
+
+    **Что вас ждёт:**
+    - 5-6 ситуационных вопросов
+    - Реальные кейсы из практики продаж
+    - AI оценит ваши ответы
+
+    💡 *Совет: Отвечайте конкретно, приводите примеры из опыта*
+    """)
+
+    if st.session_state.get('show_hints'):
+        st.info("💡 **Демо:** Пишите развёрнутые ответы (2-3 предложения). Используйте конкретные техники продаж.")
+
+    # Загружаем сценарии
+    if 'sales_scenarios' not in st.session_state:
+        with st.spinner("Загружаем кейсы..."):
+            scenarios = api_request("get", "/v1/screen/stage8_sales/scenarios")
+            if scenarios:
+                st.session_state.sales_scenarios = scenarios
+                st.rerun()
+            else:
+                st.error("❌ Не удалось загрузить кейсы.")
+                return
+
+    scenarios = st.session_state.sales_scenarios
+
+    with st.form("sales_form"):
+        st.markdown("**Ответьте на ситуационные вопросы:**")
+
+        answers = []
+        for i, scenario in enumerate(scenarios, 1):
+            type_labels = {
+                'situation': '🎯 Ситуация',
+                'motivation': '💡 Мотивация',
+                'experience': '📈 Опыт',
+                'objection': '🛡️ Возражение',
+                'cold_calling': '📞 Холодный звонок'
+            }
+            type_label = type_labels.get(scenario['type'], '❓ Вопрос')
+
+            st.markdown(f"**{i}. {type_label}**")
+            st.markdown(f"*{scenario['text']}*")
+
+            answer = st.text_area(
+                f"Ваш ответ на вопрос {i}",
+                key=f"sales_{scenario['id']}",
+                height=100,
+                placeholder="Опишите ваши действия или ответ...",
+                label_visibility="collapsed"
+            )
+            answers.append({"scenario_id": scenario['id'], "answer": answer})
+
+            if i < len(scenarios):
+                st.divider()
+
+        submitted = st.form_submit_button("Завершить отбор", type="primary", use_container_width=True)
+
+        if submitted:
+            # Проверяем, что все ответы заполнены
+            empty_answers = [a for a in answers if len(a['answer'].strip()) < 10]
+            if empty_answers:
+                st.error(f"Пожалуйста, ответьте на все вопросы (минимум 10 символов). Пустых ответов: {len(empty_answers)}")
+            else:
+                with st.spinner("AI оценивает ваши ответы..."):
+                    response = api_request("post", "/v1/screen/stage8_sales", json={"answers": answers})
+
+                if response:
+                    st.session_state.candidate_data['sales'] = response
+
+                    # Показываем результат
+                    overall_score = response.get('overall_sales_score', 50)
+                    st.metric("Общая сейлз-оценка", f"{overall_score}/100")
+
+                    # Award achievements
+                    award_achievement('sales_done')
+                    if overall_score >= 80:
+                        award_achievement('sales_ace')
+
+                    # Финальная оценка
+                    concerns = response.get('concerns', [])
+                    if overall_score < 40 and len(concerns) >= 3:
+                        st.error("К сожалению, по результатам оценки мы не можем продолжить процесс.")
+                        st.session_state.candidate_data['final_status'] = 'rejected'
+                        st.session_state.candidate_data['rejection_stage'] = 'sales'
+                    else:
+                        st.balloons()
+                        st.success(f"🎉 **Поздравляем!** Вы прошли весь отбор!")
+                        award_achievement('champion')
+                        st.session_state.candidate_data['final_status'] = 'completed'
+
+                    st.session_state.stage = 'result'
+                    time.sleep(1.5)
+                    st.rerun()
+
 
 def render_result():
     st.title("📊 Результаты отбора")
@@ -1017,5 +1236,9 @@ elif page == 'cognitive':
     render_cognitive()
 elif page == 'interview':
     render_interview()
+elif page == 'personality':
+    render_personality()
+elif page == 'sales':
+    render_sales()
 elif page == 'result':
     render_result()
