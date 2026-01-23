@@ -195,6 +195,133 @@ async def stage3_resume_scoring(request: ResumeScoringRequest):
         raise HTTPException(status_code=500, detail=f"Failed to get resume analysis from AI: {e}")
 
 
+# === STAGE 4: MOTIVATION SURVEY ===
+
+MOTIVATION_SURVEY_PROMPT_TEMPLATE = """
+You are an HR psychologist. Analyze the following answers from a candidate to determine their primary and secondary career motivations.
+
+**Candidate's Answers:**
+1. Q: Что вас мотивирует в работе больше всего?
+   A: {answer_motivation}
+2. Q: Почему вы решили сменить работу?
+   A: {answer_reason_for_leaving}
+3. Q: Как вы относитесь к работе по KPI?
+   A: {answer_kpi}
+
+**Your Task:**
+Classify the candidate's motivations into one of the primary and one of the secondary categories below.
+
+- **Primary Motivations:** 'Деньги', 'Карьера', 'Стабильность', 'Интерес к задачам'
+- **Secondary Motivations:** 'Признание', 'Коллектив', 'Обучение', 'Баланс работы и жизни'
+
+Return a JSON object with the following structure:
+{{
+  "primary_motivation": "<The single most dominant motivation>",
+  "secondary_motivation": "<The second most important motivation>",
+  "analysis_summary": "<A 1-2 sentence analysis explaining your reasoning.>"
+}}
+"""
+
+class MotivationSurveyRequest(BaseModel):
+    answer_motivation: str = Field(..., description="Answer to 'What motivates you most in your work?'")
+    answer_reason_for_leaving: str = Field(..., description="Answer to 'Why did you decide to change jobs?'")
+    answer_kpi: str = Field(..., description="Answer to 'How do you feel about working with KPIs?'")
+
+class MotivationSurveyResponse(BaseModel):
+    primary_motivation: str
+    secondary_motivation: str
+    analysis_summary: str
+
+@app.post("/v1/screen/stage4_motivation_survey", response_model=MotivationSurveyResponse, tags=["Screening"])
+async def stage4_motivation_survey(request: MotivationSurveyRequest):
+    """
+    Performs AI-powered motivation analysis (Stage 4).
+    """
+    prompt = MOTIVATION_SURVEY_PROMPT_TEMPLATE.format(
+        answer_motivation=request.answer_motivation,
+        answer_reason_for_leaving=request.answer_reason_for_leaving,
+        answer_kpi=request.answer_kpi
+    )
+    try:
+        response = await client.chat.completions.create(
+            model=AI_MODEL_NAME,
+            messages=[
+                {"role": "system", "content": "You are an HR psychologist. Respond only with valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.5,
+        )
+        response_data = json.loads(response.choices[0].message.content)
+        return MotivationSurveyResponse(**response_data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get motivation analysis from AI: {e}")
+
+
+# === STAGE 5: COGNITIVE TEST ===
+
+COGNITIVE_QUIZ_QUESTIONS = [
+    {
+        "id": "logic_1",
+        "question": "Если все Зипы — это Зупы, а некоторые Зупы — это Зопы, то некоторые Зипы обязательно являются Зопами.",
+        "options": ["Правда", "Ложь"],
+        "correct_answer": "Ложь"
+    },
+    {
+        "id": "math_1",
+        "question": "Ручка и блокнот вместе стоят 110 рублей. Блокнот стоит на 100 рублей дороже ручки. Сколько стоит ручка?",
+        "options": ["5 рублей", "10 рублей", "15 рублей", "Невозможно определить"],
+        "correct_answer": "5 рублей"
+    },
+    {
+        "id": "attention_1",
+        "question": "Найдите и посчитайте, сколько раз в следующем предложении встречается буква 'о': 'Огромный опоссум озадаченно оглядывался по сторонам, поедая сочное оранжевое яблоко.'",
+        "options": ["9", "10", "11", "12"],
+        "correct_answer": "11"
+    }
+]
+
+class CognitiveQuestion(BaseModel):
+    id: str
+    question: str
+    options: List[str]
+
+class CandidateAnswer(BaseModel):
+    question_id: str
+    answer: str
+
+class CognitiveTestSubmission(BaseModel):
+    answers: List[CandidateAnswer]
+
+class CognitiveTestResult(BaseModel):
+    score: int
+    total: int
+    passed: bool
+
+@app.get("/v1/screen/stage5_cognitive_test/questions", response_model=List[CognitiveQuestion], tags=["Screening"])
+def get_cognitive_test_questions():
+    """
+    Provides the list of questions for the cognitive test (Stage 5).
+    """
+    return [{"id": q["id"], "question": q["question"], "options": q["options"]} for q in COGNITIVE_QUIZ_QUESTIONS]
+
+@app.post("/v1/screen/stage5_cognitive_test", response_model=CognitiveTestResult, tags=["Screening"])
+def submit_cognitive_test(submission: CognitiveTestSubmission):
+    """
+    Scores the submitted answers for the cognitive test (Stage 5).
+    """
+    correct_answers_map = {q["id"]: q["correct_answer"] for q in COGNITIVE_QUIZ_QUESTIONS}
+    score = 0
+    for answer in submission.answers:
+        if correct_answers_map.get(answer.question_id) == answer.answer:
+            score += 1
+    
+    total = len(COGNITIVE_QUIZ_QUESTIONS)
+    passed = score >= (total - 1) # Allow one mistake
+    
+    return CognitiveTestResult(score=score, total=total, passed=passed)
+
+
 # === STAGE 6: BEHAVIORAL CHAT (AI-РЕЗАЛТ) ===
 
 BEHAVIORAL_QUESTIONS = [
@@ -239,7 +366,7 @@ async def stage6_behavioral_chat(request: BehavioralChatRequest):
         return BehavioralChatResponse(conversation=conversation)
     else:
         chat_history_str = "\n".join([f"{msg.role.capitalize()}: {msg.content}" for msg in conversation])
-        prompt = FINAL_ASSESSMENT_PROMPT.format(chat_history_str=chat_history_str)
+        prompt = FINAL_ASSESSMENT_PROMPT.format(chat_history=chat_history_str)
         try:
             response = await client.chat.completions.create(
                 model=AI_MODEL_NAME,
