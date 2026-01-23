@@ -77,11 +77,11 @@ This project is developed by multiple AI agents. Adherence to this protocol is m
 
 | Task | Assigned To | Status | Notes |
 |------|-------------|--------|-------|
-| Stage 4: Motivation survey | Gemini | In Progress | Add endpoint to `main.py` and UI to `app.py` |
+| Stage 4: Motivation survey | Gemini | **Done** | Backend + Frontend готовы |
 | Docker + docker-compose | Claude | **Done** | `docker/`, `docker-compose.yml` - working! |
 | Stage 5: Cognitive test | | Pending | |
 | Unit tests (pytest) | | Pending | Setup test framework in `tests/` |
-| Frontend: Stage 1 UI | Claude | **Done** | Job generation form + result view in `app.py` |
+| Frontend: Stage 1 UI | | Pending | Нужно восстановить (было перезаписано) |
 | Database Integration | | Pending | Add PostgreSQL to store results |
 | Stage 7-14 | | Pending | See `AI Sales Recruitment Funnel.xlsx` |
 
@@ -101,4 +101,5 @@ docker-compose up -d
 | 1. Job Generation | `POST /v1/jobs/generate` | Done |
 | 2. Screening | `POST /v1/screen/stage2_screening` | Done |
 | 3. Resume Scoring | `POST /v1/screen/stage3_resume_scoring` | Done |
+| 4. Motivation Survey | `POST /v1/screen/stage4_motivation_survey` | Done |
 | 6. Behavioral Chat | `POST /v1/screen/stage6_behavioral_chat` | Done |
