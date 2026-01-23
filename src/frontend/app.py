@@ -3,7 +3,8 @@ import requests
 import json
 
 # --- Configuration ---
-BACKEND_URL = "http://127.0.0.1:8000"
+import os
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 
 # --- Helper Functions ---
 def api_request(method, endpoint, **kwargs):
@@ -36,7 +37,7 @@ def render_start_page():
     st.write("Эта демонстрация покажет работу MVP (Minimum Viable Product) AI-рекрутинговой воронки.")
     if st.button("Начать процесс отбора"):
         st.session_state.stage = 'stage_2_screening'
-        st.experimental_rerun()
+        st.rerun()
 
 def render_stage_2_screening():
     st.title("Этап 2: Начальный скрининг")
@@ -105,7 +106,7 @@ def render_stage_6_chat():
         response = api_request("post", "/v1/screen/stage6_behavioral_chat", json={"conversation": []})
         if response:
             st.session_state.chat_history = response['conversation']
-            st.experimental_rerun()
+            st.rerun()
     
     # Display chat history
     for message in st.session_state.chat_history:
@@ -129,7 +130,7 @@ def render_stage_6_chat():
                 st.session_state.chat_history = response['conversation']
                 if response.get('assessment'):
                     st.session_state.assessment = response['assessment']
-                st.experimental_rerun()
+                st.rerun()
 
 def render_end_page(success=True):
     if success:
