@@ -152,7 +152,15 @@ def mock_ai_completion(monkeypatch):
             "analysis_summary": "Mock analysis",
             "scores": {},
             "final_summary": "Mock final summary",
-            "is_complete": True
+            "is_complete": True,
+            # Stage 12: Interview Guide
+            "executive_summary": "Mock executive summary",
+            "strengths": ["Strong communication", "High motivation"],
+            "concerns": ["Limited experience"],
+            "recommended_questions": ["Расскажите о самом сложном проекте?"],
+            "deal_breaker_signals": ["Отказ от холодных звонков"],
+            "hiring_recommendation": "yes",
+            "recommendation_reasoning": "Кандидат подходит на позицию"
         }
         return MockCompletions(json.dumps(mock_response_content))
 
@@ -585,6 +593,53 @@ async def test_sales_block_mocked(async_client: AsyncClient, mock_ai_completion)
     # With mock, we get default values from mock response
     assert "overall_sales_score" in data
     assert "recommendation" in data
+
+
+# === Stage 12: Interview Guide Tests ===
+
+async def test_interview_guide_mocked(async_client: AsyncClient, mock_ai_completion):
+    """Test interview guide generation with mocked AI."""
+    # Create job and candidate with some assessment data
+    job_payload = {
+        "brief": sample_job_brief(),
+        "generated": sample_job_generated()
+    }
+    job_response = await async_client.post("/v1/jobs", json=job_payload)
+    job_id = job_response.json()["id"]
+
+    candidate_response = await async_client.post(
+        "/v1/candidates",
+        json={"job_id": job_id, "name": "Интервью Кандидат"}
+    )
+    candidate_id = candidate_response.json()["id"]
+
+    # Update candidate with some stage results to have data for the guide
+    await async_client.patch(
+        f"/v1/candidates/{candidate_id}/stage",
+        json={"stage": "screening", "data": {}, "passed": True}
+    )
+
+    # Request interview guide
+    response = await async_client.post(
+        "/v1/screen/stage12_interview_guide",
+        json={"candidate_id": candidate_id}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["candidate_name"] == "Интервью Кандидат"
+    assert data["executive_summary"] == "Mock executive summary"
+    assert data["strengths"] == ["Strong communication", "High motivation"]
+    assert data["concerns"] == ["Limited experience"]
+    assert data["hiring_recommendation"] == "yes"
+
+
+async def test_interview_guide_candidate_not_found(async_client: AsyncClient, mock_ai_completion):
+    """Test interview guide returns 404 for non-existent candidate."""
+    response = await async_client.post(
+        "/v1/screen/stage12_interview_guide",
+        json={"candidate_id": 99999}
+    )
+    assert response.status_code == 404
 
 
 # === Stage 13: Offers Tests ===
