@@ -485,3 +485,309 @@ async def test_get_stats_with_data(async_client: AsyncClient):
     assert data["total_jobs"] == 1
     assert data["active_jobs"] == 1
     assert data["total_candidates"] == 3
+
+
+# === Stage 7: Personality Profile Tests ===
+
+async def test_get_personality_questions(async_client: AsyncClient):
+    """Test getting personality profile questions."""
+    response = await async_client.get("/v1/screen/stage7_personality/questions")
+    assert response.status_code == 200
+    questions = response.json()
+    assert len(questions) == 14  # 7 scales x 2 questions each
+    assert "id" in questions[0]
+    assert "text" in questions[0]
+    assert "scale" in questions[0]
+    assert "options" in questions[0]
+
+
+async def test_personality_profile_calculation(async_client: AsyncClient):
+    """Test personality profile calculation."""
+    # All maximum scores (value=5)
+    answers = [
+        {"question_id": "pers_1", "value": 5},
+        {"question_id": "pers_2", "value": 5},
+        {"question_id": "stress_1", "value": 5},
+        {"question_id": "stress_2", "value": 5},
+        {"question_id": "energy_1", "value": 5},
+        {"question_id": "energy_2", "value": 5},
+        {"question_id": "social_1", "value": 5},
+        {"question_id": "social_2", "value": 5},
+        {"question_id": "honest_1", "value": 5},
+        {"question_id": "honest_2", "value": 5},
+        {"question_id": "team_1", "value": 5},
+        {"question_id": "team_2", "value": 5},
+        {"question_id": "routine_1", "value": 5},
+        {"question_id": "routine_2", "value": 5},
+    ]
+    response = await async_client.post("/v1/screen/stage7_personality", json={"answers": answers})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["persistence"] == 100
+    assert data["stress_resistance"] == 100
+    assert data["energy"] == 100
+    assert data["sociability"] == 100
+    assert data["honesty"] == 100
+    assert data["teamwork"] == 100
+    assert data["routine_tolerance"] == 100
+    assert data["sales_fit_score"] == 100
+    assert data["red_flags"] == []
+
+
+async def test_personality_profile_low_scores(async_client: AsyncClient):
+    """Test personality profile with low scores generates red flags."""
+    # All minimum scores (value=1)
+    answers = [
+        {"question_id": "pers_1", "value": 1},
+        {"question_id": "pers_2", "value": 1},
+        {"question_id": "stress_1", "value": 1},
+        {"question_id": "stress_2", "value": 1},
+        {"question_id": "energy_1", "value": 1},
+        {"question_id": "energy_2", "value": 1},
+        {"question_id": "social_1", "value": 1},
+        {"question_id": "social_2", "value": 1},
+        {"question_id": "honest_1", "value": 1},
+        {"question_id": "honest_2", "value": 1},
+        {"question_id": "team_1", "value": 1},
+        {"question_id": "team_2", "value": 1},
+        {"question_id": "routine_1", "value": 1},
+        {"question_id": "routine_2", "value": 1},
+    ]
+    response = await async_client.post("/v1/screen/stage7_personality", json={"answers": answers})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["persistence"] == 0
+    assert len(data["red_flags"]) > 0  # Should have red flags for low scores
+
+
+# === Stage 8: Sales Block Tests ===
+
+async def test_get_sales_scenarios(async_client: AsyncClient):
+    """Test getting sales scenarios."""
+    response = await async_client.get("/v1/screen/stage8_sales/scenarios")
+    assert response.status_code == 200
+    scenarios = response.json()
+    assert len(scenarios) == 8
+    assert "id" in scenarios[0]
+    assert "type" in scenarios[0]
+    assert "text" in scenarios[0]
+
+
+async def test_sales_block_mocked(async_client: AsyncClient, mock_ai_completion):
+    """Test sales block evaluation with mocked AI."""
+    answers = [
+        {"scenario_id": "scenario_1", "answer": "Я уточню причину возражения и предложу альтернативу"},
+        {"scenario_id": "scenario_2", "answer": "Покажу ROI и ценность продукта"},
+    ]
+    response = await async_client.post("/v1/screen/stage8_sales", json={"answers": answers})
+    assert response.status_code == 200
+    data = response.json()
+    # With mock, we get default values from mock response
+    assert "overall_sales_score" in data
+    assert "recommendation" in data
+
+
+# === Stage 13: Offers Tests ===
+
+async def test_create_offer(async_client: AsyncClient):
+    """Test creating an offer for a candidate."""
+    # Create job and candidate first
+    job_payload = {
+        "brief": sample_job_brief(),
+        "generated": sample_job_generated()
+    }
+    job_response = await async_client.post("/v1/jobs", json=job_payload)
+    job_id = job_response.json()["id"]
+
+    candidate_response = await async_client.post(
+        "/v1/candidates",
+        json={"job_id": job_id, "name": "Офферный Кандидат"}
+    )
+    candidate_id = candidate_response.json()["id"]
+
+    # Create offer
+    offer_payload = {
+        "candidate_id": candidate_id,
+        "salary_offered": 75000,
+        "start_date": "2024-02-01",
+        "probation_period_months": 3
+    }
+    response = await async_client.post("/v1/offers", json=offer_payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["candidate_id"] == candidate_id
+    assert data["salary_offered"] == 75000
+    assert data["status"] == "draft"
+
+
+async def test_list_offers(async_client: AsyncClient):
+    """Test listing offers."""
+    response = await async_client.get("/v1/offers")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+
+async def test_update_offer_status(async_client: AsyncClient):
+    """Test updating offer status."""
+    # Create job and candidate
+    job_payload = {
+        "brief": sample_job_brief(),
+        "generated": sample_job_generated()
+    }
+    job_response = await async_client.post("/v1/jobs", json=job_payload)
+    job_id = job_response.json()["id"]
+
+    candidate_response = await async_client.post(
+        "/v1/candidates",
+        json={"job_id": job_id, "name": "Кандидат на оффер"}
+    )
+    candidate_id = candidate_response.json()["id"]
+
+    # Create offer
+    offer_response = await async_client.post("/v1/offers", json={
+        "candidate_id": candidate_id,
+        "salary_offered": 80000,
+        "start_date": "2024-03-01"
+    })
+    offer_id = offer_response.json()["id"]
+
+    # Update status to sent
+    response = await async_client.patch(f"/v1/offers/{offer_id}", json={"status": "sent"})
+    assert response.status_code == 200
+    assert response.json()["status"] == "sent"
+
+    # Update status to accepted
+    response = await async_client.patch(f"/v1/offers/{offer_id}", json={"status": "accepted"})
+    assert response.status_code == 200
+    assert response.json()["status"] == "accepted"
+
+
+# === Stage 14: Onboarding Tests ===
+
+async def test_start_onboarding(async_client: AsyncClient):
+    """Test starting onboarding for a hired candidate."""
+    # Create job and candidate
+    job_payload = {
+        "brief": sample_job_brief(),
+        "generated": sample_job_generated()
+    }
+    job_response = await async_client.post("/v1/jobs", json=job_payload)
+    job_id = job_response.json()["id"]
+
+    candidate_response = await async_client.post(
+        "/v1/candidates",
+        json={"job_id": job_id, "name": "Онбординг Кандидат"}
+    )
+    candidate_id = candidate_response.json()["id"]
+
+    # Start onboarding
+    response = await async_client.post(
+        f"/v1/onboarding/{candidate_id}/start?start_date=2024-02-15"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["candidate_id"] == candidate_id
+    assert data["start_date"] == "2024-02-15"
+    assert len(data["checklist"]) == 11  # 11 items in template
+    assert data["completion_percentage"] == 0
+
+
+async def test_get_onboarding_status(async_client: AsyncClient):
+    """Test getting onboarding status."""
+    # Create and start onboarding
+    job_payload = {
+        "brief": sample_job_brief(),
+        "generated": sample_job_generated()
+    }
+    job_response = await async_client.post("/v1/jobs", json=job_payload)
+    job_id = job_response.json()["id"]
+
+    candidate_response = await async_client.post(
+        "/v1/candidates",
+        json={"job_id": job_id, "name": "Статус Кандидат"}
+    )
+    candidate_id = candidate_response.json()["id"]
+
+    await async_client.post(f"/v1/onboarding/{candidate_id}/start?start_date=2024-01-01")
+
+    # Get status
+    response = await async_client.get(f"/v1/onboarding/{candidate_id}")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["candidate_id"] == candidate_id
+    assert "checklist" in data
+    assert "metrics" in data
+
+
+async def test_update_checklist_item(async_client: AsyncClient):
+    """Test updating a checklist item."""
+    # Create and start onboarding
+    job_payload = {
+        "brief": sample_job_brief(),
+        "generated": sample_job_generated()
+    }
+    job_response = await async_client.post("/v1/jobs", json=job_payload)
+    job_id = job_response.json()["id"]
+
+    candidate_response = await async_client.post(
+        "/v1/candidates",
+        json={"job_id": job_id, "name": "Чеклист Кандидат"}
+    )
+    candidate_id = candidate_response.json()["id"]
+
+    await async_client.post(f"/v1/onboarding/{candidate_id}/start?start_date=2024-01-15")
+
+    # Update checklist item
+    response = await async_client.patch(
+        f"/v1/onboarding/{candidate_id}/checklist/docs?completed=true"
+    )
+    assert response.status_code == 200
+
+    # Verify update
+    status_response = await async_client.get(f"/v1/onboarding/{candidate_id}")
+    checklist = status_response.json()["checklist"]
+    docs_item = next(item for item in checklist if item["id"] == "docs")
+    assert docs_item["completed"] is True
+
+
+async def test_update_onboarding_metrics(async_client: AsyncClient):
+    """Test updating onboarding metrics."""
+    # Create and start onboarding
+    job_payload = {
+        "brief": sample_job_brief(),
+        "generated": sample_job_generated()
+    }
+    job_response = await async_client.post("/v1/jobs", json=job_payload)
+    job_id = job_response.json()["id"]
+
+    candidate_response = await async_client.post(
+        "/v1/candidates",
+        json={"job_id": job_id, "name": "Метрики Кандидат"}
+    )
+    candidate_id = candidate_response.json()["id"]
+
+    await async_client.post(f"/v1/onboarding/{candidate_id}/start?start_date=2024-01-20")
+
+    # Update metrics
+    metrics_payload = {
+        "calls_made": 50,
+        "meetings_scheduled": 5,
+        "deals_in_pipeline": 3,
+        "revenue_generated": 150000.0
+    }
+    response = await async_client.patch(
+        f"/v1/onboarding/{candidate_id}/metrics",
+        json=metrics_payload
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["calls_made"] == 50
+    assert data["meetings_scheduled"] == 5
+    assert data["deals_in_pipeline"] == 3
+    assert data["revenue_generated"] == 150000.0
+
+
+async def test_onboarding_not_found(async_client: AsyncClient):
+    """Test getting onboarding for non-existent candidate."""
+    response = await async_client.get("/v1/onboarding/99999")
+    assert response.status_code == 404

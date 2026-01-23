@@ -1141,7 +1141,7 @@ async def stage8_sales_block(request: SalesBlockRequest):
     prompt = SALES_EVALUATION_PROMPT.format(scenarios_and_answers=scenarios_text)
 
     response = await client.chat.completions.create(
-        model=AI_MODEL_NAME,
+        model=AI_AI_MODEL_NAME,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
         response_format={"type": "json_object"}
@@ -1237,7 +1237,7 @@ async def stage12_interview_guide(request: InterviewGuideRequest, db: AsyncSessi
     )
 
     response = await client.chat.completions.create(
-        model=AI_MODEL_NAME,
+        model=AI_AI_MODEL_NAME,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.5,
         response_format={"type": "json_object"}
@@ -1423,11 +1423,14 @@ async def start_onboarding(candidate_id: int, start_date: str, db: AsyncSession 
     onboarding_storage[candidate_id] = onboarding
 
     return OnboardingStatus(
-        **onboarding,
+        candidate_id=candidate_id,
+        candidate_name=candidate.name or "Неизвестно",
+        start_date=start_date,
         checklist=checklist,
         metrics=OnboardingMetrics(),
         completion_percentage=0,
-        days_since_start=0
+        days_since_start=0,
+        status="onboarding"
     )
 
 @app.get("/v1/onboarding/{candidate_id}", response_model=OnboardingStatus, tags=["Onboarding"])
