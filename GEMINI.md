@@ -46,3 +46,45 @@ streamlit run src/frontend/app.py
 - Follow standard PEP 8 conventions for Python.
 - Use Pydantic for all API data models in the backend.
 - Keep logic separated by function and endpoint.
+
+---
+
+## Multi-Agent Collaboration
+
+This project is developed by multiple AI agents (Gemini, Claude, etc.) working in parallel.
+
+### Important Git Behavior
+
+**If you see changes in a file but `git status` shows "nothing to commit":**
+- This means another agent already committed those changes
+- Run `git log --oneline -5` to see recent commits
+- Run `git pull` if you're behind remote
+
+**Before making changes:**
+```bash
+git pull origin main  # Always sync first
+git status            # Check for uncommitted changes
+```
+
+**Commit convention:**
+```
+feat: Short description
+
+Co-Authored-By: Agent Name <noreply@anthropic.com>
+```
+
+### Current API Endpoints (as of latest commit)
+
+| Stage | Endpoint | Status |
+|-------|----------|--------|
+| 1. Job Generation | `POST /v1/jobs/generate` | Done |
+| 2. Screening | `POST /v1/screen/stage2_screening` | Done |
+| 3. Resume Scoring | `POST /v1/screen/stage3_resume_scoring` | Done |
+| 6. Behavioral Chat | `POST /v1/screen/stage6_behavioral_chat` | Done |
+
+### Next Tasks (unclaimed)
+- Stage 4: Motivation survey
+- Stage 5: Cognitive test
+- Stage 7-14: See `AI Sales Recruitment Funnel.xlsx`
+- Docker + docker-compose
+- Unit tests (pytest)
