@@ -28,6 +28,98 @@ app = FastAPI(
     version="0.1.0"
 )
 
+
+# === STAGE 1: JOB POSTING GENERATION ===
+
+JOB_GENERATION_PROMPT = """
+Ты — опытный HR-специалист по подбору менеджеров по продажам. Сгенерируй привлекательную вакансию на основе брифа.
+
+**Бриф:**
+- Должность: {job_title}
+- Компания: {company_name}
+- Сегмент продаж: {sales_segment}
+- Зарплата: {salary_range}
+- План продаж: {sales_target}
+- Формат работы: {work_format}
+- Дополнительные требования: {additional_requirements}
+
+**Верни JSON-объект со следующей структурой:**
+{{
+  "job_title_final": "<Финальное название вакансии>",
+  "job_description": "<Полный текст вакансии (3-5 абзацев): о компании, обязанности, что предлагаем>",
+  "requirements": ["<Требование 1>", "<Требование 2>", ...],
+  "nice_to_have": ["<Желательно 1>", "<Желательно 2>", ...],
+  "benefits": ["<Преимущество 1>", "<Преимущество 2>", ...],
+  "screening_questions": [
+    {{"question": "<Вопрос для скрининга>", "type": "yes_no | choice | number", "deal_breaker": true/false}},
+    ...
+  ],
+  "salary_display": "<Как показывать зарплату в объявлении>",
+  "tags": ["<тег1>", "<тег2>", ...]
+}}
+"""
+
+class JobBriefRequest(BaseModel):
+    job_title: str = Field(..., example="Менеджер по продажам B2B")
+    company_name: str = Field(..., example="ТехноСофт")
+    company_description: str | None = Field(None, example="IT-компания, разрабатывающая CRM-системы")
+    sales_segment: str = Field(..., example="B2B SaaS, средний бизнес")
+    salary_range: str = Field(..., example="80 000 - 150 000 руб + % от продаж")
+    sales_target: str | None = Field(None, example="500 000 руб/мес выручки")
+    work_format: str = Field(default="office", example="office / remote / hybrid")
+    additional_requirements: str | None = Field(None, example="Опыт работы с CRM, английский язык")
+
+class ScreeningQuestion(BaseModel):
+    question: str
+    type: str  # yes_no, choice, number
+    deal_breaker: bool = False
+
+class JobPostingResponse(BaseModel):
+    job_title_final: str
+    job_description: str
+    requirements: List[str]
+    nice_to_have: List[str]
+    benefits: List[str]
+    screening_questions: List[ScreeningQuestion]
+    salary_display: str
+    tags: List[str]
+
+@app.post("/v1/jobs/generate", response_model=JobPostingResponse, tags=["Job Posting"])
+async def stage1_generate_job_posting(request: JobBriefRequest):
+    """
+    Stage 1: AI-генерация вакансии на основе брифа.
+
+    Принимает базовую информацию о позиции и генерирует:
+    - Полный текст вакансии
+    - Список требований и преимуществ
+    - Скрининг-вопросы для первичного отбора
+    """
+    prompt = JOB_GENERATION_PROMPT.format(
+        job_title=request.job_title,
+        company_name=request.company_name,
+        sales_segment=request.sales_segment,
+        salary_range=request.salary_range,
+        sales_target=request.sales_target or "Обсуждается индивидуально",
+        work_format=request.work_format,
+        additional_requirements=request.additional_requirements or "Нет дополнительных требований"
+    )
+
+    try:
+        response = await client.chat.completions.create(
+            model=AI_MODEL_NAME,
+            messages=[
+                {"role": "system", "content": "Ты HR-эксперт. Отвечай только валидным JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.7,
+        )
+        response_data = json.loads(response.choices[0].message.content)
+        return JobPostingResponse(**response_data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate job posting: {e}")
+
+
 # === STAGE 2: INITIAL SCREENING ===
 
 SCREENING_QUESTIONS_CRITERIA = {
