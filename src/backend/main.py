@@ -36,25 +36,41 @@ client = AsyncOpenAI(
 async def lifespan(app: FastAPI):
     # Startup: initialize database with retry logic
     import asyncio
+
+    print("="*50)
+    print("AI-HR Backend Starting...")
+    print(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
+    print(f"AI Model: {AI_MODEL_NAME}")
+    print(f"Database URL: {os.getenv('DATABASE_URL', 'not set')[:50]}...")
+    print("="*50)
+
     max_retries = 5
     retry_delay = 2
 
     for attempt in range(max_retries):
         try:
-            print(f"Initializing database (attempt {attempt + 1}/{max_retries})...")
+            print(f"[{attempt + 1}/{max_retries}] Initializing database...")
             await init_db()
-            print("Database initialized successfully!")
+            print("✓ Database initialized successfully!")
             break
         except Exception as e:
             if attempt < max_retries - 1:
-                print(f"Database connection failed: {e}. Retrying in {retry_delay}s...")
+                print(f"✗ Database connection failed: {e}")
+                print(f"  Retrying in {retry_delay}s...")
                 await asyncio.sleep(retry_delay)
             else:
-                print(f"Failed to initialize database after {max_retries} attempts: {e}")
+                print(f"✗ FATAL: Failed to initialize database after {max_retries} attempts")
+                print(f"  Error: {e}")
                 raise
 
+    print("="*50)
+    print("✓ AI-HR Backend ready to accept connections!")
+    print("="*50)
+
     yield
-    # Shutdown: nothing to do
+
+    # Shutdown
+    print("AI-HR Backend shutting down...")
 
 app = FastAPI(
     title="AI-HR Assistant API",
