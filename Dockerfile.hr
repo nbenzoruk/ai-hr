@@ -1,0 +1,22 @@
+# HR PANEL - Streamlit Frontend
+# NO AI_API_KEY NEEDED!
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+COPY src/frontend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy ONLY frontend source code
+COPY src/frontend/app_hr.py .
+
+# Diagnostic: Show what files we have
+RUN echo "=== FILES IN /app ===" && ls -la /app
+
+# Expose Streamlit port
+EXPOSE 8501
+
+# Run Streamlit - HR Panel
+CMD ["streamlit", "run", "app_hr.py", "--server.address", "0.0.0.0", "--server.port", "8501", "--server.headless", "true"]
