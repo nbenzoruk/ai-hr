@@ -1,0 +1,54 @@
+# Railway-optimized docker-compose
+# Railway автоматически деплоит каждый сервис отдельно
+
+services:
+  # Backend API
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      # Railway автоматически предоставит DATABASE_URL
+      - DATABASE_URL=${DATABASE_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ENVIRONMENT=production
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Candidate Portal
+  frontend-candidate:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        APP_FILE: app_candidate.py
+    ports:
+      - "8501:8501"
+    environment:
+      # Railway заменит это на URL backend сервиса
+      - BACKEND_URL=${BACKEND_URL:-http://backend:8000}
+      - DEMO_MODE=${DEMO_MODE:-false}
+    restart: unless-stopped
+
+  # HR Panel
+  frontend-hr:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        APP_FILE: app_hr.py
+    ports:
+      - "8502:8501"
+    environment:
+      - BACKEND_URL=${BACKEND_URL:-http://backend:8000}
+    restart: unless-stopped
+
+# Railway автоматически создаст PostgreSQL через UI
+# volumes не нужны - Railway управляет хранилищем

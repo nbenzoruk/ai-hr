@@ -1,0 +1,8 @@
+# Nixpacks configuration for Railway
+# Tells Railway to use Docker builder
+
+[phases.build]
+nixPkgs = ["docker"]
+
+[start]
+cmd = "echo 'Use docker-compose or configure services individually in Railway UI'"
