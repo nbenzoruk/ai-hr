@@ -1,0 +1,44 @@
+# ТЕСТОВЫЙ DOCKERFILE - ДИАГНОСТИКА
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Показать что происходит
+RUN echo "========================================" && \
+    echo "НАЧАЛО БИЛДА" && \
+    echo "========================================"
+
+# Установить зависимости
+COPY src/frontend/requirements.txt .
+RUN echo "Установка зависимостей..." && \
+    pip install --no-cache-dir -r requirements.txt && \
+    echo "✓ Зависимости установлены"
+
+# Скопировать ТОЛЬКО app_candidate.py
+COPY src/frontend/app_candidate.py .
+
+# ДИАГНОСТИКА: Показать ВСЕ файлы в контейнере
+RUN echo "========================================" && \
+    echo "ФАЙЛЫ В /app:" && \
+    ls -lah /app && \
+    echo "========================================" && \
+    echo "ПРОВЕРКА: есть ли main.py?" && \
+    (ls -la /app/main.py 2>/dev/null && echo "✗ ОШИБКА: main.py найден!" || echo "✓ OK: main.py отсутствует") && \
+    echo "========================================" && \
+    echo "ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ:" && \
+    env | grep -E "(API_KEY|BACKEND|ENV)" || echo "Нет AI переменных" && \
+    echo "========================================"
+
+# Проверить синтаксис Python файла БЕЗ запуска
+RUN python -m py_compile app_candidate.py && \
+    echo "✓ app_candidate.py синтаксически корректен"
+
+EXPOSE 8501
+
+# Простая команда для теста
+CMD echo "========================================" && \
+    echo "ЗАПУСК КОНТЕЙНЕРА" && \
+    echo "Файлы в /app:" && ls -la /app && \
+    echo "========================================" && \
+    echo "Запуск Streamlit..." && \
+    streamlit run app_candidate.py --server.address 0.0.0.0 --server.port 8501 --server.headless true
