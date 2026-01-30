@@ -3,6 +3,7 @@ import json
 from contextlib import asynccontextmanager
 from openai import AsyncOpenAI
 from fastapi import FastAPI, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Literal, Optional, Union, Dict
 from enum import Enum
@@ -61,6 +62,35 @@ app = FastAPI(
     version="0.2.0",
     lifespan=lifespan
 )
+
+# === Security Configuration ===
+
+# CORS Configuration
+# Get allowed origins from environment variable
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+
+# In production, use specific origins only
+if ENVIRONMENT == "production" and "*" in ALLOWED_ORIGINS:
+    # Railway provides these by default
+    ALLOWED_ORIGINS = [
+        "https://frontend-candidate-production.up.railway.app",
+        "https://frontend-hr-production.up.railway.app",
+        # Add your Railway domains here
+    ]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+    max_age=3600,  # Cache preflight requests for 1 hour
+)
+
+# Disable debug mode in production
+if ENVIRONMENT == "production":
+    app.debug = False
 
 
 # === STAGE 1: JOB POSTING GENERATION ===

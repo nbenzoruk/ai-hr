@@ -12,7 +12,11 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://aihr:aihr_secret@
 if DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-engine = create_async_engine(DATABASE_URL, echo=True)
+# Disable SQL echo in production for security
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+SQL_ECHO = ENVIRONMENT != "production"
+
+engine = create_async_engine(DATABASE_URL, echo=SQL_ECHO)
 
 async_session_maker = async_sessionmaker(
     engine,
