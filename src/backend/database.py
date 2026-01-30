@@ -5,7 +5,12 @@ import os
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
+# Get DATABASE_URL from environment
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://aihr:aihr_secret@localhost:5433/aihr_db")
+
+# Railway provides postgresql:// but we need postgresql+asyncpg:// for async
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
 engine = create_async_engine(DATABASE_URL, echo=True)
 

@@ -33,8 +33,25 @@ client = AsyncOpenAI(
 # --- Application Setup ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: initialize database
-    await init_db()
+    # Startup: initialize database with retry logic
+    import asyncio
+    max_retries = 5
+    retry_delay = 2
+
+    for attempt in range(max_retries):
+        try:
+            print(f"Initializing database (attempt {attempt + 1}/{max_retries})...")
+            await init_db()
+            print("Database initialized successfully!")
+            break
+        except Exception as e:
+            if attempt < max_retries - 1:
+                print(f"Database connection failed: {e}. Retrying in {retry_delay}s...")
+                await asyncio.sleep(retry_delay)
+            else:
+                print(f"Failed to initialize database after {max_retries} attempts: {e}")
+                raise
+
     yield
     # Shutdown: nothing to do
 
@@ -1482,3 +1499,8 @@ def update_onboarding_metrics(candidate_id: int, metrics: OnboardingMetrics):
 @app.get("/")
 def read_root():
     return {"message": "AI-HR Backend is running", "version": "0.3.0", "database": "connected"}
+
+@app.get("/health")
+def health_check():
+    """Health check endpoint for Railway and other monitoring."""
+    return {"status": "healthy", "service": "ai-hr-backend"}
