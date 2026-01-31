@@ -19,6 +19,7 @@ EXPOSE 8501
 # Environment variables for portal URLs (override in Railway)
 ENV CANDIDATE_PORTAL_URL=https://frontend-candidate-production.up.railway.app
 ENV HR_PANEL_URL=https://frontend-hr-production.up.railway.app
+ENV PORT=8501
 
-# Run Streamlit - Landing Page
-CMD ["streamlit", "run", "app_landing.py", "--server.address", "0.0.0.0", "--server.port", "8501", "--server.headless", "true"]
+# Run Streamlit - Landing Page (use $PORT for Railway compatibility)
+CMD streamlit run app_landing.py --server.address 0.0.0.0 --server.port $PORT --server.headless true
