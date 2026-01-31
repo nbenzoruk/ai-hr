@@ -2,6 +2,24 @@
 # https://render.com/docs/blueprint-spec
 
 services:
+  # Landing Page (entry point)
+  - type: web
+    name: ai-hr-landing
+    runtime: docker
+    dockerfilePath: ./Dockerfile.landing
+    dockerContext: .
+    envVars:
+      - key: CANDIDATE_PORTAL_URL
+        fromService:
+          name: ai-hr-candidate
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: HR_PANEL_URL
+        fromService:
+          name: ai-hr-panel
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+
   # Backend API
   - type: web
     name: ai-hr-backend

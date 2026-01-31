@@ -6,9 +6,12 @@
 
 | Сервис | URL |
 |--------|-----|
+| **Landing Page** | https://landing-production.up.railway.app |
 | **Candidate Portal** | https://frontend-candidate-production.up.railway.app |
 | **HR Panel** | https://frontend-hr-production.up.railway.app |
 | **Backend API** | https://ai-hrnew-production.up.railway.app |
+
+> 🚀 **Начни здесь:** [Landing Page](https://landing-production.up.railway.app) — единая точка входа
 
 ## 🚀 Быстрый старт
 

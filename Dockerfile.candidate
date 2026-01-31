@@ -10,9 +10,10 @@ WORKDIR /app
 COPY src/frontend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy ONLY frontend source code
+# Copy frontend source code
 COPY src/frontend/app_candidate.py .
 COPY src/frontend/app.py .
+COPY src/frontend/.streamlit .streamlit/
 
 # Diagnostic: Show what files we have
 RUN echo "=== FILES IN /app ===" && ls -la /app
