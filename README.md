@@ -2,6 +2,14 @@
 
 🤖 **AI-powered рекрутинговая воронка** для автоматизации отбора кандидатов
 
+## 🌐 Production (Live Demo)
+
+| Сервис | URL |
+|--------|-----|
+| **Candidate Portal** | https://frontend-candidate-production.up.railway.app |
+| **HR Panel** | https://frontend-hr-production.up.railway.app |
+| **Backend API** | https://ai-hrnew-production.up.railway.app |
+
 ## 🚀 Быстрый старт
 
 ### Локальный запуск (Docker)
