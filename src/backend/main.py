@@ -1549,7 +1549,7 @@ def update_onboarding_metrics(candidate_id: int, metrics: OnboardingMetrics):
 
 @app.get("/")
 def read_root():
-    return {"message": "AI-HR Backend is running", "version": "0.3.0", "database": "connected"}
+    return {"message": "AI-HR Backend is running", "version": "0.4.0-admin", "database": "connected"}
 
 @app.get("/health")
 def health_check():
