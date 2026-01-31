@@ -105,3 +105,91 @@ class Candidate(Base):
 
     # Связи
     job: Mapped["Job"] = relationship(back_populates="candidates")
+
+
+class SystemSettings(Base):
+    """Global system settings (singleton - only one row)"""
+    __tablename__ = "system_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    # AI Settings
+    ai_temperature: Mapped[float] = mapped_column(Float, default=0.7)
+    ai_model_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    # Default thresholds
+    default_resume_threshold: Mapped[int] = mapped_column(Integer, default=65)
+    default_cognitive_pass: Mapped[int] = mapped_column(Integer, default=2)  # out of 3
+    default_personality_threshold: Mapped[int] = mapped_column(Integer, default=40)
+    default_sales_threshold: Mapped[int] = mapped_column(Integer, default=40)
+
+    # Screening defaults
+    default_screening_criteria: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    # Metadata
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+
+class Prompt(Base):
+    """Configurable AI prompts"""
+    __tablename__ = "prompts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    # Identification
+    key: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Prompt content
+    system_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    prompt_template: Mapped[str] = mapped_column(Text)
+
+    # Variables (list of expected placeholders)
+    template_variables: Mapped[dict] = mapped_column(JSON, default=list)
+
+    # AI parameters override
+    temperature: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # Versioning
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Metadata
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class StageDefinition(Base):
+    """Configurable recruitment stages"""
+    __tablename__ = "stage_definitions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    # Identification
+    key: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    icon: Mapped[str] = mapped_column(String(10), default="📋")
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Stage behavior
+    stage_type: Mapped[str] = mapped_column(String(50))  # form, ai_analysis, test, chat
+    is_blocking: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_skippable: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Ordering
+    default_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Pass criteria
+    pass_criteria: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    # Related prompt
+    prompt_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Metadata
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

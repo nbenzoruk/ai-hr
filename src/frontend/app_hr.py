@@ -433,6 +433,11 @@ def render_sidebar():
             st.session_state.hr_page = 'settings'
             st.rerun()
 
+        if st.button("🔧 Admin", use_container_width=True,
+                     type="primary" if st.session_state.hr_page == 'admin' else "secondary"):
+            st.session_state.hr_page = 'admin'
+            st.rerun()
+
         st.divider()
 
         # Быстрая статистика
@@ -944,6 +949,371 @@ def render_candidate_card(candidate):
             rec = guide.get('hiring_recommendation', 'maybe')
             getattr(st, rec_colors.get(rec, 'info'))(f"**Рекомендация:** {rec_labels.get(rec, rec)}\n\n{guide.get('recommendation_reasoning', '')}")
 
+# === Admin Section ===
+
+def render_admin():
+    """Admin panel for managing prompts and system settings."""
+    render_breadcrumbs()
+    st.title("🔧 Admin Panel")
+
+    # Admin sub-navigation
+    admin_tab = st.radio(
+        "Раздел",
+        ["AI Промпты", "Системные настройки", "Этапы воронки"],
+        horizontal=True,
+        label_visibility="collapsed"
+    )
+
+    st.divider()
+
+    if admin_tab == "AI Промпты":
+        render_admin_prompts()
+    elif admin_tab == "Системные настройки":
+        render_admin_settings()
+    elif admin_tab == "Этапы воронки":
+        render_admin_stages()
+
+
+def render_admin_prompts():
+    """Manage AI prompts."""
+    st.subheader("🤖 AI Промпты")
+    st.info("Редактируйте промпты для AI без изменения кода. Изменения применяются сразу.")
+
+    # Fetch prompts from API
+    try:
+        response = requests.get(f"{BACKEND_URL}/v1/admin/prompts", timeout=10)
+        if response.status_code == 200:
+            prompts = response.json()
+        else:
+            st.error(f"Ошибка загрузки промптов: {response.status_code}")
+            return
+    except requests.exceptions.RequestException as e:
+        st.error(f"Не удалось подключиться к API: {e}")
+        return
+
+    if not prompts:
+        st.warning("Промпты не найдены. Перезапустите бэкенд для seed данных.")
+        return
+
+    # Prompt selector
+    prompt_keys = {p['key']: p['name'] for p in prompts}
+    selected_key = st.selectbox(
+        "Выберите промпт для редактирования",
+        options=list(prompt_keys.keys()),
+        format_func=lambda x: f"{prompt_keys[x]} ({x})"
+    )
+
+    # Find selected prompt
+    selected_prompt = next((p for p in prompts if p['key'] == selected_key), None)
+
+    if selected_prompt:
+        st.divider()
+
+        col1, col2 = st.columns([2, 1])
+
+        with col1:
+            st.markdown(f"**Ключ:** `{selected_prompt['key']}`")
+            st.markdown(f"**Версия:** {selected_prompt['version']}")
+
+        with col2:
+            st.markdown(f"**Обновлён:** {selected_prompt['updated_at'][:10]}")
+
+        # Edit form
+        with st.form(f"edit_prompt_{selected_key}"):
+            new_name = st.text_input("Название", value=selected_prompt['name'])
+
+            new_description = st.text_area(
+                "Описание",
+                value=selected_prompt.get('description') or '',
+                height=60
+            )
+
+            new_system_message = st.text_area(
+                "System Message (опционально)",
+                value=selected_prompt.get('system_message') or '',
+                height=80,
+                help="Системное сообщение для AI. Задаёт роль и контекст."
+            )
+
+            new_prompt_template = st.text_area(
+                "Шаблон промпта",
+                value=selected_prompt['prompt_template'],
+                height=300,
+                help="Используйте {переменная} для подстановки значений."
+            )
+
+            # Show variables
+            variables = selected_prompt.get('template_variables', [])
+            if variables:
+                st.markdown(f"**Переменные:** `{', '.join(variables)}`")
+
+            new_temperature = st.slider(
+                "Температура",
+                min_value=0.0,
+                max_value=1.0,
+                value=float(selected_prompt.get('temperature') or 0.7),
+                step=0.1,
+                help="0 = детерминированный, 1 = максимально креативный"
+            )
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                save_btn = st.form_submit_button("💾 Сохранить", type="primary", use_container_width=True)
+
+            with col2:
+                test_btn = st.form_submit_button("🧪 Тест", use_container_width=True)
+
+            if save_btn:
+                update_data = {
+                    "name": new_name,
+                    "description": new_description if new_description else None,
+                    "system_message": new_system_message if new_system_message else None,
+                    "prompt_template": new_prompt_template,
+                    "temperature": new_temperature
+                }
+
+                try:
+                    resp = requests.put(
+                        f"{BACKEND_URL}/v1/admin/prompts/{selected_key}",
+                        json=update_data,
+                        timeout=10
+                    )
+                    if resp.status_code == 200:
+                        st.success(f"✅ Промпт '{new_name}' сохранён! Версия: {resp.json()['version']}")
+                        st.rerun()
+                    else:
+                        st.error(f"Ошибка сохранения: {resp.text}")
+                except Exception as e:
+                    st.error(f"Ошибка: {e}")
+
+        # Test section (outside form)
+        st.divider()
+        st.subheader("🧪 Тестирование промпта")
+
+        with st.expander("Тестовые данные", expanded=False):
+            test_variables = {}
+            for var in variables:
+                test_variables[var] = st.text_area(
+                    var,
+                    value=f"[Тестовое значение для {var}]",
+                    height=80,
+                    key=f"test_var_{var}"
+                )
+
+            if st.button("▶️ Запустить тест", type="primary"):
+                with st.spinner("AI обрабатывает..."):
+                    try:
+                        resp = requests.post(
+                            f"{BACKEND_URL}/v1/admin/prompts/{selected_key}/test",
+                            json={"variables": test_variables},
+                            timeout=60
+                        )
+                        if resp.status_code == 200:
+                            result = resp.json()
+                            if result.get('error'):
+                                st.error(f"Ошибка: {result['error']}")
+                            else:
+                                st.success("Тест выполнен!")
+                                st.markdown("**Отрендеренный промпт:**")
+                                st.code(result.get('prompt_rendered', '')[:1000] + "...", language="markdown")
+                                st.markdown("**Ответ AI:**")
+                                st.json(result.get('ai_response', ''))
+                        else:
+                            st.error(f"Ошибка: {resp.text}")
+                    except Exception as e:
+                        st.error(f"Ошибка: {e}")
+
+
+def render_admin_settings():
+    """Manage system settings."""
+    st.subheader("⚙️ Системные настройки")
+    st.info("Глобальные настройки системы. Влияют на все новые вакансии и кандидатов.")
+
+    # Fetch current settings
+    try:
+        response = requests.get(f"{BACKEND_URL}/v1/admin/settings", timeout=10)
+        if response.status_code == 200:
+            settings = response.json()
+        else:
+            st.error(f"Ошибка загрузки настроек: {response.status_code}")
+            return
+    except requests.exceptions.RequestException as e:
+        st.error(f"Не удалось подключиться к API: {e}")
+        return
+
+    with st.form("admin_settings"):
+        st.markdown("### 🤖 AI Настройки")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            ai_temperature = st.slider(
+                "Температура AI",
+                min_value=0.0,
+                max_value=1.0,
+                value=float(settings.get('ai_temperature', 0.7)),
+                step=0.1,
+                help="Влияет на креативность ответов AI"
+            )
+
+        with col2:
+            ai_model = st.text_input(
+                "Модель AI (опционально)",
+                value=settings.get('ai_model_name') or '',
+                help="Оставьте пустым для использования модели по умолчанию"
+            )
+
+        st.divider()
+        st.markdown("### 📊 Пороги по умолчанию")
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            resume_threshold = st.number_input(
+                "Резюме (мин. балл)",
+                min_value=0,
+                max_value=100,
+                value=settings.get('default_resume_threshold', 65),
+                help="Минимальный балл для прохождения"
+            )
+
+        with col2:
+            cognitive_pass = st.number_input(
+                "Когнитивный тест",
+                min_value=1,
+                max_value=3,
+                value=settings.get('default_cognitive_pass', 2),
+                help="Минимум правильных ответов из 3"
+            )
+
+        with col3:
+            personality_threshold = st.number_input(
+                "Личность (мин.)",
+                min_value=0,
+                max_value=100,
+                value=settings.get('default_personality_threshold', 40),
+                help="Порог для красных флагов"
+            )
+
+        with col4:
+            sales_threshold = st.number_input(
+                "Sales (мин.)",
+                min_value=0,
+                max_value=100,
+                value=settings.get('default_sales_threshold', 40),
+                help="Минимальный sales score"
+            )
+
+        st.divider()
+        st.markdown("### 📋 Критерии скрининга по умолчанию")
+
+        screening = settings.get('default_screening_criteria', {})
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            cold_calls = st.checkbox(
+                "Требовать холодные звонки",
+                value=screening.get('cold_calls', {}).get('expected', True)
+            )
+
+        with col2:
+            work_format = st.selectbox(
+                "Формат работы",
+                ["office", "remote", "hybrid", "any"],
+                index=["office", "remote", "hybrid", "any"].index(
+                    screening.get('work_format', {}).get('expected', 'office')
+                )
+            )
+
+        with col3:
+            max_salary = st.number_input(
+                "Макс. зарплата",
+                min_value=0,
+                max_value=500000,
+                value=screening.get('salary_expectation', {}).get('max_allowed', 60000),
+                step=5000
+            )
+
+        if st.form_submit_button("💾 Сохранить настройки", type="primary", use_container_width=True):
+            update_data = {
+                "ai_temperature": ai_temperature,
+                "ai_model_name": ai_model if ai_model else None,
+                "default_resume_threshold": resume_threshold,
+                "default_cognitive_pass": cognitive_pass,
+                "default_personality_threshold": personality_threshold,
+                "default_sales_threshold": sales_threshold,
+                "default_screening_criteria": {
+                    "cold_calls": {"expected": cold_calls},
+                    "work_format": {"expected": work_format},
+                    "salary_expectation": {"max_allowed": max_salary}
+                }
+            }
+
+            try:
+                resp = requests.put(
+                    f"{BACKEND_URL}/v1/admin/settings",
+                    json=update_data,
+                    timeout=10
+                )
+                if resp.status_code == 200:
+                    st.success("✅ Настройки сохранены!")
+                    st.rerun()
+                else:
+                    st.error(f"Ошибка: {resp.text}")
+            except Exception as e:
+                st.error(f"Ошибка: {e}")
+
+
+def render_admin_stages():
+    """Manage stage definitions (Phase 2 - basic view)."""
+    st.subheader("📋 Этапы воронки")
+    st.info("Управление этапами рекрутинговой воронки. (Функционал в разработке)")
+
+    # Fetch stages from API
+    try:
+        response = requests.get(f"{BACKEND_URL}/v1/admin/stages", timeout=10)
+        if response.status_code == 200:
+            stages = response.json()
+        else:
+            st.warning("Этапы ещё не настроены. Функционал будет добавлен в следующей версии.")
+            stages = []
+    except requests.exceptions.RequestException:
+        stages = []
+
+    if stages:
+        for stage in stages:
+            with st.expander(f"{stage['icon']} {stage['name']} ({stage['key']})"):
+                st.write(f"**Тип:** {stage['stage_type']}")
+                st.write(f"**Блокирующий:** {'Да' if stage['is_blocking'] else 'Нет'}")
+                st.write(f"**Критерии:** {stage['pass_criteria']}")
+    else:
+        # Show default stages (hardcoded for now)
+        default_stages = [
+            ("📋", "Скрининг", "screening", "form", True),
+            ("📄", "Анализ резюме", "resume", "ai_analysis", True),
+            ("💡", "Мотивация", "motivation", "form", False),
+            ("🧠", "Когнитивный тест", "cognitive", "test", True),
+            ("💬", "AI Интервью", "interview", "chat", False),
+            ("🎭", "Личность", "personality", "test", True),
+            ("💼", "Sales-кейсы", "sales", "ai_analysis", True),
+            ("📊", "Результат", "result", "summary", False),
+        ]
+
+        st.markdown("**Текущие этапы (по умолчанию):**")
+
+        for icon, name, key, stage_type, blocking in default_stages:
+            col1, col2, col3, col4 = st.columns([1, 3, 2, 2])
+            col1.write(icon)
+            col2.write(name)
+            col3.write(f"`{key}`")
+            col4.write("🔴 Блокирующий" if blocking else "🟢 Не блокирующий")
+
+        st.divider()
+        st.info("💡 В следующей версии вы сможете включать/выключать этапы и настраивать их пороги.")
+
+
 def render_settings():
     render_breadcrumbs()
     st.title("⚙️ Настройки")
@@ -1217,3 +1587,5 @@ elif page == 'onboarding':
     render_onboarding()
 elif page == 'settings':
     render_settings()
+elif page == 'admin':
+    render_admin()

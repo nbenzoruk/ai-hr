@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from database import get_db, init_db
+from database import get_db, init_db, seed_defaults, async_session_maker
 import models
 
 # --- Environment and API Key Setup ---
@@ -52,6 +52,11 @@ async def lifespan(app: FastAPI):
             print(f"[{attempt + 1}/{max_retries}] Initializing database...")
             await init_db()
             print("✓ Database initialized successfully!")
+
+            # Seed default data (prompts, settings)
+            async with async_session_maker() as db:
+                await seed_defaults(db)
+
             break
         except Exception as e:
             if attempt < max_retries - 1:
@@ -1550,3 +1555,281 @@ def read_root():
 def health_check():
     """Health check endpoint for Railway and other monitoring."""
     return {"status": "healthy", "service": "ai-hr-backend"}
+
+
+# === Admin API Endpoints ===
+
+# --- Pydantic Schemas for Admin API ---
+
+class SystemSettingsOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    ai_temperature: float
+    ai_model_name: Optional[str]
+    default_resume_threshold: int
+    default_cognitive_pass: int
+    default_personality_threshold: int
+    default_sales_threshold: int
+    default_screening_criteria: dict
+    updated_at: datetime
+    updated_by: Optional[str]
+
+
+class SystemSettingsUpdate(BaseModel):
+    ai_temperature: Optional[float] = None
+    ai_model_name: Optional[str] = None
+    default_resume_threshold: Optional[int] = None
+    default_cognitive_pass: Optional[int] = None
+    default_personality_threshold: Optional[int] = None
+    default_sales_threshold: Optional[int] = None
+    default_screening_criteria: Optional[dict] = None
+
+
+class PromptOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    key: str
+    name: str
+    description: Optional[str]
+    system_message: Optional[str]
+    prompt_template: str
+    template_variables: list
+    temperature: Optional[float]
+    version: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class PromptUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    system_message: Optional[str] = None
+    prompt_template: Optional[str] = None
+    template_variables: Optional[list] = None
+    temperature: Optional[float] = None
+
+
+class PromptTestRequest(BaseModel):
+    variables: dict  # {"job_title": "Sales Manager", ...}
+
+
+class PromptTestResponse(BaseModel):
+    prompt_rendered: str
+    ai_response: Optional[str] = None
+    error: Optional[str] = None
+
+
+class StageDefinitionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    key: str
+    name: str
+    icon: str
+    description: Optional[str]
+    stage_type: str
+    is_blocking: bool
+    is_skippable: bool
+    default_order: int
+    pass_criteria: dict
+    prompt_key: Optional[str]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class StageDefinitionUpdate(BaseModel):
+    name: Optional[str] = None
+    icon: Optional[str] = None
+    description: Optional[str] = None
+    is_blocking: Optional[bool] = None
+    is_skippable: Optional[bool] = None
+    default_order: Optional[int] = None
+    pass_criteria: Optional[dict] = None
+    is_active: Optional[bool] = None
+
+
+# --- System Settings Endpoints ---
+
+@app.get("/v1/admin/settings", response_model=SystemSettingsOut, tags=["Admin"])
+async def get_system_settings(db: AsyncSession = Depends(get_db)):
+    """Get current system settings."""
+    result = await db.execute(select(models.SystemSettings).limit(1))
+    settings = result.scalar_one_or_none()
+
+    if not settings:
+        # Create default settings if not exist
+        settings = models.SystemSettings()
+        db.add(settings)
+        await db.commit()
+        await db.refresh(settings)
+
+    return settings
+
+
+@app.put("/v1/admin/settings", response_model=SystemSettingsOut, tags=["Admin"])
+async def update_system_settings(
+    update: SystemSettingsUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Update system settings."""
+    result = await db.execute(select(models.SystemSettings).limit(1))
+    settings = result.scalar_one_or_none()
+
+    if not settings:
+        settings = models.SystemSettings()
+        db.add(settings)
+
+    # Update only provided fields
+    update_data = update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(settings, field, value)
+
+    await db.commit()
+    await db.refresh(settings)
+    return settings
+
+
+# --- Prompts Endpoints ---
+
+@app.get("/v1/admin/prompts", response_model=List[PromptOut], tags=["Admin"])
+async def list_prompts(db: AsyncSession = Depends(get_db)):
+    """List all prompts."""
+    result = await db.execute(
+        select(models.Prompt).order_by(models.Prompt.key)
+    )
+    return result.scalars().all()
+
+
+@app.get("/v1/admin/prompts/{key}", response_model=PromptOut, tags=["Admin"])
+async def get_prompt(key: str, db: AsyncSession = Depends(get_db)):
+    """Get prompt by key."""
+    result = await db.execute(
+        select(models.Prompt).where(models.Prompt.key == key)
+    )
+    prompt = result.scalar_one_or_none()
+
+    if not prompt:
+        raise HTTPException(status_code=404, detail=f"Prompt '{key}' not found")
+
+    return prompt
+
+
+@app.put("/v1/admin/prompts/{key}", response_model=PromptOut, tags=["Admin"])
+async def update_prompt(
+    key: str,
+    update: PromptUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Update prompt by key."""
+    result = await db.execute(
+        select(models.Prompt).where(models.Prompt.key == key)
+    )
+    prompt = result.scalar_one_or_none()
+
+    if not prompt:
+        raise HTTPException(status_code=404, detail=f"Prompt '{key}' not found")
+
+    # Update only provided fields
+    update_data = update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(prompt, field, value)
+
+    # Increment version
+    prompt.version += 1
+
+    await db.commit()
+    await db.refresh(prompt)
+    return prompt
+
+
+@app.post("/v1/admin/prompts/{key}/test", response_model=PromptTestResponse, tags=["Admin"])
+async def test_prompt(
+    key: str,
+    request: PromptTestRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Test prompt with sample variables."""
+    result = await db.execute(
+        select(models.Prompt).where(models.Prompt.key == key)
+    )
+    prompt = result.scalar_one_or_none()
+
+    if not prompt:
+        raise HTTPException(status_code=404, detail=f"Prompt '{key}' not found")
+
+    try:
+        # Render prompt with variables
+        rendered = prompt.prompt_template.format(**request.variables)
+
+        # Call AI to test
+        messages = []
+        if prompt.system_message:
+            messages.append({"role": "system", "content": prompt.system_message})
+        messages.append({"role": "user", "content": rendered})
+
+        temperature = prompt.temperature or 0.7
+
+        response = await client.chat.completions.create(
+            model=AI_MODEL_NAME,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=2000,
+        )
+
+        ai_response = response.choices[0].message.content
+
+        return PromptTestResponse(
+            prompt_rendered=rendered,
+            ai_response=ai_response
+        )
+
+    except KeyError as e:
+        return PromptTestResponse(
+            prompt_rendered="",
+            error=f"Missing variable: {e}"
+        )
+    except Exception as e:
+        return PromptTestResponse(
+            prompt_rendered=rendered if 'rendered' in locals() else "",
+            error=str(e)
+        )
+
+
+# --- Stage Definitions Endpoints ---
+
+@app.get("/v1/admin/stages", response_model=List[StageDefinitionOut], tags=["Admin"])
+async def list_stages(db: AsyncSession = Depends(get_db)):
+    """List all stage definitions."""
+    result = await db.execute(
+        select(models.StageDefinition).order_by(models.StageDefinition.default_order)
+    )
+    return result.scalars().all()
+
+
+@app.put("/v1/admin/stages/{key}", response_model=StageDefinitionOut, tags=["Admin"])
+async def update_stage(
+    key: str,
+    update: StageDefinitionUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Update stage definition by key."""
+    result = await db.execute(
+        select(models.StageDefinition).where(models.StageDefinition.key == key)
+    )
+    stage = result.scalar_one_or_none()
+
+    if not stage:
+        raise HTTPException(status_code=404, detail=f"Stage '{key}' not found")
+
+    # Update only provided fields
+    update_data = update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(stage, field, value)
+
+    await db.commit()
+    await db.refresh(stage)
+    return stage
