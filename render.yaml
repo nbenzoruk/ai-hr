@@ -1,0 +1,61 @@
+# Render Blueprint - автоматический деплой
+# https://render.com/docs/blueprint-spec
+
+services:
+  # Backend API
+  - type: web
+    name: ai-hr-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile.backend
+    dockerContext: .
+    envVars:
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_API_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: AI_MODEL_NAME
+        value: google/gemini-2.0-flash-001
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-hr-db
+          property: connectionString
+
+  # Candidate Portal
+  - type: web
+    name: ai-hr-candidate
+    runtime: docker
+    dockerfilePath: ./Dockerfile.candidate
+    dockerContext: .
+    envVars:
+      - key: BACKEND_URL
+        fromService:
+          name: ai-hr-backend
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: DEMO_MODE
+        value: "true"
+      - key: ENVIRONMENT
+        value: production
+
+  # HR Panel  
+  - type: web
+    name: ai-hr-panel
+    runtime: docker
+    dockerfilePath: ./Dockerfile.hr
+    dockerContext: .
+    envVars:
+      - key: BACKEND_URL
+        fromService:
+          name: ai-hr-backend
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: ENVIRONMENT
+        value: production
+
+databases:
+  - name: ai-hr-db
+    plan: free
+    databaseName: aihr
+    user: aihr
