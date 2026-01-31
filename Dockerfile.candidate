@@ -1,5 +1,6 @@
 # CANDIDATE PORTAL - Streamlit Frontend
 # NO AI_API_KEY NEEDED!
+# Force rebuild: 2026-01-31
 
 FROM python:3.11-slim
 
